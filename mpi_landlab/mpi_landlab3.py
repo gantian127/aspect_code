@@ -36,7 +36,7 @@ num_partitions = 5
 assert size == num_partitions, "Number of MPI processes must match the number of partitions!"
 
 if rank == 0:
-    output_dir = os.path.join(os.getcwd(),'output_3')
+    output_dir = os.path.join(os.getcwd(),'output')
     os.makedirs(output_dir, exist_ok=True)
 
     ## step 1: define hex model grid and assign z values
