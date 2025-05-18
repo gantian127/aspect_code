@@ -12,10 +12,10 @@ matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
 import numpy as np
 
-from landlab import HexModelGrid, VoronoiDelaunayGrid
+from landlab import HexModelGrid
 from landlab.components import SimpleSubmarineDiffuser
 
-output = os.path.join(os.getcwd(),"validate2")
+output = os.path.join(os.getcwd(),"validate")
 os.makedirs(output,exist_ok=True)
 
 ## step 1: define hex model grid and assign z values
