@@ -213,6 +213,8 @@ for time_step in range(0,50):
     cbar.set_label('Elevation Change (cm)')
     fig.savefig(os.path.join(output_dir,f'elev_diff_for_rank{rank}.png'))
 
+    # close all plots
+    plt.close('all')
 
     ## step 7 gather all updates to rank 0
     # Create local update data (only for owned nodes, not ghost)
@@ -252,6 +254,7 @@ for time_step in range(0,50):
         mg.imshow("topographic__elevation", cmap="coolwarm")
         plt.title("Topographic elevation result (m)")
         plt.savefig(os.path.join(output_dir,"dem_hex_model_result.png"))
+        plt.close('all')
 
         print(f"loop {time_step}")
         print(diff_z.max(), diff_z.min())
