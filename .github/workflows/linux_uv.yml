@@ -33,5 +33,4 @@ jobs:
       run: |
         . ./.venv/bin/activate
         landlab --version
-        ls
-# ./test.sh
+        . ./test.sh
