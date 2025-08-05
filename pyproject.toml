@@ -5,6 +5,7 @@ description = "Example of landlab parallel workflow"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "scipy==1.16.0",
     "landlab==2.9.2",
     "mpi4py",
     "pymetis>=2025.2.1",
