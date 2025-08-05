@@ -1,4 +1,4 @@
-name: aspect_code_test
+name: aspect_code_test2
 
 on: [push, pull_request]
 
