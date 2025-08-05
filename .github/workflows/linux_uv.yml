@@ -33,6 +33,7 @@ jobs:
       run: |
         . ./.venv/bin/activate
         landlab --version
+        ./test.sh
 #    - name: Python Tests
 #      run: |
 #        . ./.venv/bin/activate
