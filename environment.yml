@@ -7,4 +7,5 @@ dependencies:
   - numpy=2.3.2
   - scipy=1.15.2
   - landlab=2.9.2
+  - matplotlib
   - pymetis>=2025.2.1
