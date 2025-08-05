@@ -32,7 +32,7 @@ rank = comm.Get_rank()
 size = comm.Get_size()
 
 # Ensure number of partitions matches the MPI processes
-num_partitions = 5
+num_partitions = size
 assert size == num_partitions, "Number of MPI processes must match the number of partitions!"
 
 if rank == 0:
