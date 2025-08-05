@@ -91,6 +91,7 @@ if rank == 0:
 
     # Convert partition labels to a NumPy array
     partition_array = np.array(part_labels)
+    print(partition_array)
 
     # visualization
     fig, ax = plt.subplots(figsize=[16, 14])
