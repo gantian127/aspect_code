@@ -1,0 +1,46 @@
+name: aspect_code_test
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.actor }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OMPI_MCA_btl_base_warn_component_unused: 0
+  OMPI_MCA_mpi_yield_when_idle: 1
+  OMPI_MCA_rmaps_base_oversubscribe: 1
+  OMPI_ALLOW_RUN_AS_ROOT: 1
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  OMPI_MCA_btl_vader_single_copy_mechanism: none
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies (OpenMPI)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopenmpi-dev openmpi-bin
+
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: 3.12
+        activate-environment: test-env
+        environment-file: environment.yml
+        auto-activate-base: false
+
+    - name: Check mpi4py works
+      shell: bash -l {0}
+      run: |
+        python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
+
+    - name: Run your tests
+      shell: bash -l {0}
+      run: |
+        ./test.sh
