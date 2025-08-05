@@ -16,21 +16,30 @@ env:
 
 jobs:
   tests:
-    runs-on: [ubuntu-latest]
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install system dependencies (OpenMPI)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopenmpi-dev openmpi-bin
+
     - uses: astral-sh/setup-uv@v6
 
-    - name: Python Setup
+    - name: Set up Python with uv
       run: |
         uv python install 3.12
         uv venv
         uv sync
-        
-    - name: Test Install
+
+    - name: Check mpi4py works
       run: |
-        . ./.venv/bin/activate
-        landlab --version
+        . .venv/bin/activate
+        python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
+
+    - name: Run your tests
+      run: |
+        . .venv/bin/activate
         . ./test.sh
