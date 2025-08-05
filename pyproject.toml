@@ -1,0 +1,11 @@
+[project]
+name = "aspect-code"
+version = "0.1.0"
+description = "Example of landlab parallel workflow"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "landlab==2.9.2",
+    "mpi4py",
+    "pymetis>=2025.2.1",
+]
