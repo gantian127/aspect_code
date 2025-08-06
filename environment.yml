@@ -2,6 +2,7 @@ name: test-env
 channels:
   - conda-forge
 dependencies:
+  # based on uv env pkg list
   - bmipy==2.0.1
   - certifi==2025.8.3
   #- cftime==1.6.4.post1
@@ -41,15 +42,9 @@ dependencies:
   - typing-extensions==4.14.1
   #- tzdata==2025.2
   - xarray==2025.7.1
+  # pkg versions not supported by conda
   - pip
   - pip:
     - mypy-extensions==1.1.0
     - tzdata==2025.2
     - cftime==1.6.4.post1
-#  - python=3.12
-#  - mpi4py
-#  - numpy=2.3.2
-#  - scipy=1.16.0
-#  - landlab=2.9.2
-#  - matplotlib
-#  - pymetis>=2025.2.1
