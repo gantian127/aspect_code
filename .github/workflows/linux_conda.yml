@@ -43,4 +43,5 @@ jobs:
     - name: Run your tests
       shell: bash -l {0}
       run: |
+        conda list
         ./test.sh
