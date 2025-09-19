@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<VTKFile type="PUnstructuredGrid" version="1.0" byte_order="LittleEndian">
+  <PUnstructuredGrid GhostLevel="0">
+    <PPoints>
+      <PDataArray type="Float32" NumberOfComponents="3" Name="Points"/>
+    </PPoints>
+    <PPointData>
+      <PDataArray type="Float32" Name="topographic_elevation" NumberOfComponents="1"/>
+    </PPointData>
+    <Piece Source="rank0_1.vtu"/>
+    <Piece Source="rank1_1.vtu"/>
+    <Piece Source="rank2_1.vtu"/>
+    <Piece Source="rank3_1.vtu"/>
+  </PUnstructuredGrid>
+</VTKFile>

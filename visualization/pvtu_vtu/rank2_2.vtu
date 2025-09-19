@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+  <!--This file was created by meshio v5.3.5-->
+  <UnstructuredGrid>
+    <Piece NumberOfPoints="91" NumberOfCells="156">
+      <Points>
+        <DataArray type="Float32" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAABEBAAA7QAAAA==eJxN0y1ORDEUhuHKGxTyOm5GkMoKRGWPIXU0wdRMUkUaMJWVFV3AaDQ7YAWzCjAYVoBFkPATpn2PeuybfEepRfZfR6f+boU1bGEPRzjDFe6wkpfnt3+fwxtsYAcHOMEFbvAit/efo2tawxb2cIQzXOEOK7k7nMmpa3qDDezgACe4wA1e5OlhlVPXtIYt7OEIZ7jCHVbyfn05uqY32MAODnCCC9zgRS52V6NrWsMW9nCEM1zhDqufTcromt5gAzs4wAkucIM/3OPrzWicXmENW9jDEc5whTv8+2v70Ti9wQZ2cIATXOA2/A2Wa9Mt
+</DataArray>
+      </Points>
+      <Cells>
+        <DataArray type="Int32" Name="connectivity" format="binary">
+AQAAAACAAABQBwAA/QEAAA==eJxN0WtTUmEYRuHM7CAReTbNiDwbRkQaERkRoRmZmpn5/39I+56uZtozz6y5v6w17+zJG3+/seJKeLO4+zheXBlvFfcAJ4qr4O3iHuKd4qbwbnGTxd3TKNlj/CWNsj3OX9ao2BP8FY0pO40lO61prTRmMI1ZTGMO05jHNBYwjUVM4xFOcU7zztolzlneebvMOc+7aFc4F3mX7CnuZW94bKexgmk8wTSqmMZTTKOGaTzDNFZxiX9ZY8We4V/RqNpz/FWNmr3AX9NYtdOo22mtaaWxjmlsYBqbmMYWprGNaexgGs9xlXONd8Ne4dzg3bKrnFu8O3aNc4e3bsd/5J/kDbuY3gtMr4HpvcT0mpjeK0yvhem9xvT2sM6/q9Gw1/kbGk17k7+p0bK3+Vsae3YaB3bdG/+9bx/Te4PptTG9t5heB9N7h+l1Mb33uMe5z9u2G5xt3o7d5Ozwdu0WZ5f3wI7/w3/v6GEaHzGNPqbxCdMYYBqfMY0hpnGIB1pHej17X6un17fbWn29gd3RGugN7a7WUO/MTveLVhrHmMZXTGOEaXzDNE4wje+Yxike8h9pHNs9/mONkd3nH2mc2AP+E41Te+gtp1rnWmn8wDQuMI2fmMYlpvEL07jCNH5jGtd4xn+ucWEf819oXNoj/kuNK/uE/0rj2k7jDy5xUhk=
+</DataArray>
+        <DataArray type="Int32" Name="offsets" format="binary">
+AQAAAACAAABwAgAAHwEAAA==eJwNwwFEGAEAAMCvWUrZbJZNKZulKaUsy1I2m83SlFKapVlKKaWUTWmWzWbZLEuzlKaUpmmazaYpTVOWZmmWxhhjxIgRERHtjtsTBEGYEUa534NGe8RY4z1mgidMNtV0M8w0yxzPet6L5nrZAoss8YplXrPCKmuss8EmW7xpm7fs8K737fSRXXb71F77fe6QI77wpa987Vvf+8FpP/rJeRf84pLfXPGHP/3lb/+45l/X/eeGm2657Y67hoYEwV7DjXSfBzzkYWOM86jHTTTJFNM86SlPm+0Zz3nBS+aZb6HFlnrVcq9babW11ttoszdstd3b3vGeD3zoY5/Y4zP7HHDQYUcdc9wJ3/jOSaeccdY5P7voV5f97qr/AVb7SMo=
+</DataArray>
+        <DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAADgBAAAFgAAAA==eJxjZYAA1lF6lB6lR+lhRgMAfrkDDQ==
+</DataArray>
+      </Cells>
+      <PointData>
+        <DataArray type="Float32" Name="topographic_elevation" NumberOfComponents="1" format="binary">
+AQAAAACAAABsAQAAuwAAAA==eJwdwyFIAwEUANCPDBkiMobIEJFDRMaQMYbBeLpiNBoXjUbjBYNhYWHBYFgwLBgWFhYWLiwYDAsGg2FhYcGwYDAYfOzBi1hLIzJz4yIiMbVtZte+Q3Nnzl0ZlxFFS1ZMrNrw3NQrr72x7a133pv54KMdu/Z88tm+Lw58dejIsRNzp7757swPP/1y7sKl36788dc/oxWxYcFNi2657Y4ly+66Z8V9Dzw08chjT6xa89S6DZuetf4BW/w9PA==
+</DataArray>
+      </PointData>
+    </Piece>
+  </UnstructuredGrid>
+</VTKFile>
