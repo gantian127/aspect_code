@@ -11,8 +11,9 @@ if rank =0,
     step2: grid partition using pymetis.
     step3: send each partition information used for the local grid
 step4: define local grid as Voronoi ModelGrid (this could be in a finer resolution if needed)
+step5: define SimpleSubmarineDiffuser model with local grid
 for each_step in time_steps:
-    step5: run SimpleSubmarineDiffuser model with local model grid
+    run SimpleSubmarineDiffuser model at one step
     step6: send and receive elevation data for ghost nodes, update ghost nodes values in local grid
     step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
 
@@ -65,7 +66,10 @@ if rank == 0:
     z0 = z.copy()
 
     # identify boundary nodes
-    boundary_nodes = mg.boundary_nodes
+    boundary_nodes = mg.boundary_nodes  # status as fixed value 1
+
+    # testing code!! global grid boundary node status as 1 (fixed value)
+    # print(f"global grid boundary node status: {mg.status_at_node[boundary_nodes]}")
 
     # plot z 2D and 1D
     mg.imshow(z, cmap="coolwarm", vmin=-3)
@@ -143,6 +147,12 @@ if rank == 0:
         local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in
                                     sorted(ghost_nodes + local_boundary_nodes)]
 
+        # !! Testing code to get each partition x, y boundary info
+        # print(f"rank:{rank}")
+        # print(f"x:{x}")
+        # print(f"y:{y}")
+        # print(f"lenx: {len(x)} leny: {len(y)}")
+        # print(f"local_boundary:{local_boundary_nodes_ind}")
 
         if rank != 0:
             comm.send(
@@ -159,9 +169,29 @@ else:
 
 ## step4: define local model grid
 local_vmg = VoronoiDelaunayGrid(x.tolist(), y.tolist())  # x, y needs to be list type
+
+# !! testing code for boundary node status
+# print(f"rank {rank} default boundary: {local_vmg.boundary_nodes}")
+# print(f"rank {rank} default boundary status: {local_vmg.status_at_node[local_vmg.boundary_nodes]}")
+
+# !! testing code for zero division error
+# print(f'rank: {rank}')
+# print(x.tolist())
+# print(y.tolist())
+# print(f'end: rank{rank}')
+
 local_vmg.add_field("topographic__elevation", elev, at="node")
 cum_depo = local_vmg.add_zeros("total_deposit__thickness", at="node")
 local_vmg.status_at_node[local_boundary_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
+
+# !! testing code for boundary node status
+# print(f"rank {rank} supposed boundary: {local_boundary_nodes_ind}")
+# print(f"rank {rank} supposed boundary status: {local_vmg.status_at_node[local_boundary_nodes_ind]}")
+
+# !! test code findings:
+# the default local grid boundary nodes are much less than the supposed boundary nodes.
+# default boundary nodes status is 1 (fixed values)
+
 
 # plot subgrid for each rank
 output_sub_dir = os.path.join(os.getcwd(), f"output_rank{rank}")
@@ -226,18 +256,6 @@ for time_step in range(0,50):
 local_sum = local_vmg.at_node["topographic__elevation"][local_vmg.core_nodes].sum()
 print(f"{rank}: {local_sum}")
 global_sum = comm.allreduce(local_sum, op=MPI.SUM)
-
-# # collect results
-# local_updates = []
-# for node in vmg_global_ind:
-#     if node not in ghost_nodes:
-#     vmg_local_ind = vmg_global_ind.index(node)
-#     local_updates.append( (node,
-#                             elev_local[vmg_local_ind],
-#                             local_cum_depo[vmg_local_ind]) )
-#
-#
-# all_updates = comm.gather(local_updates, root=0)
 
 if rank==0:
     # # Flatten list of updates from all ranks
