@@ -9,4 +9,5 @@ dependencies = [
     "landlab==2.9.2",
     "mpi4py",
     "pymetis>=2025.2.1",
+    "meshio>=5.3.5"
 ]
