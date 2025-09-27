@@ -23,6 +23,7 @@ mpiexec -np 5 python mpi_landlab.py
 """
 
 import os
+import shutil
 import numpy as np
 import pymetis
 
@@ -30,6 +31,7 @@ import matplotlib.pyplot as plt
 
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.components import SimpleSubmarineDiffuser
+from plot_utils import vtu_dump, pvtu_dump, create_pvd
 
 
 ## step 0: set up parallel
@@ -216,8 +218,10 @@ ssd = SimpleSubmarineDiffuser(
     local_vmg, sea_level=0.0, wave_base=1.0, shallow_water_diffusivity=1.0
 )
 
+time_steps = list(range(0,50))
+
 # loop for multiple time steps
-for time_step in range(0,50):
+for time_step in time_steps:
 
     # run one step
     ssd.run_one_step(0.2)
@@ -237,20 +241,24 @@ for time_step in range(0,50):
         local_vmg.at_node["topographic__elevation"][ghost_nodes_local_id] = elev_values
         local_vmg_ghost_nodes.extend(ghost_nodes)
 
-    ## step7: make plots for each rank at each time
-    fig, ax = plt.subplots(figsize=[18, 14])
-    sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
-                    c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
-                    vmin=-3)
-    ax.set_title(f'subgrid nodes rank={rank}')
-    for node_id in local_boundary_nodes_ind:
-        ax.annotate(f"B",
-                    (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                    color='blue', fontsize=12, ha='center', va='top')
-    cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label('Elevation (m)')
-    fig.savefig(os.path.join(output_sub_dir, f'subgrid_for_rank{rank}_loop_{time_step}.png'))
-    plt.close(fig)
+    ## step7: make plots for each rank at each time as png file
+    # fig, ax = plt.subplots(figsize=[18, 14])
+    # sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
+    #                 c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
+    #                 vmin=-3)
+    # ax.set_title(f'subgrid nodes rank={rank}')
+    # for node_id in local_boundary_nodes_ind:
+    #     ax.annotate(f"B",
+    #                 (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+    #                 color='blue', fontsize=12, ha='center', va='top')
+    # cbar = fig.colorbar(sc, ax=ax)
+    # cbar.set_label('Elevation (m)')
+    # fig.savefig(os.path.join(output_sub_dir, f'subgrid_for_rank{rank}_loop_{time_step}.png'))
+    # plt.close(fig)
+
+    ## step7: make vtu file for each rank at each time step
+    with open(os.path.join(output_sub_dir, f"rank{rank}_{time_step}.vtu"), "w") as fp:
+        fp.write(vtu_dump(local_vmg))
 
 # check sum values
 local_sum = local_vmg.at_node["topographic__elevation"][local_vmg.core_nodes].sum()
@@ -263,5 +271,36 @@ if rank==0:
     # for node_id, elev, cum_depo in flat_updates:
     #     mg.at_node["topographic__elevation"][node_id] = elev
     #     mg.at_node["total_deposit__thickness"][node_id] = cum_depo
+
+    # check global sum
     print(global_sum)
+
+    # create pvtu files for each time step
+    output_pvtu = os.path.join(os.getcwd(),'output_pvtu')
+    os.makedirs(output_pvtu, exist_ok=True)
+
+    pvtu_files = []
+    for time_step in time_steps:
+        # move vtu files to one folder
+        for i in range(0, num_partitions):
+            shutil.move(
+                os.path.join(os.getcwd(), f"output_rank{i}", f"rank{i}_{time_step}.vtu"),
+                output_pvtu
+            )
+
+        # write pvtu file for each time step
+        with open(os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w") as fp:
+            fp.write(pvtu_dump(local_vmg,
+                               [os.path.join(output_pvtu, f"rank{i}_{time_step}.vtu")
+                               for i in range(0, num_partitions)]
+                               )
+                     )
+
+        pvtu_files.append(f"global_{time_step}.pvtu")
+
+    # create pvd files for all time steps
+    pvd_file_path = os.path.join(output_pvtu, "simulation.pvd")
+    create_pvd(pvtu_files, time_steps, pvd_file_path)
+
+
     print('Simulation is done!')
