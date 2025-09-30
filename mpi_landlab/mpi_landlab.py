@@ -51,10 +51,10 @@ if rank == 0:
     ## step 1: define hex model grid and assign z values
 
     # create output dir for global grid
-    output_dir = os.path.join(os.getcwd(),f'output_png_{num_partitions}')
+    output_dir = os.path.join(os.getcwd(),f'arti_output_png_{num_partitions}')
     os.makedirs(output_dir, exist_ok=True)
 
-    output_pvtu = os.path.join(os.getcwd(),f'output_pvtu_{num_partitions}')
+    output_pvtu = os.path.join(os.getcwd(),f'arti_output_pvtu_{num_partitions}')
     os.makedirs(output_pvtu, exist_ok=True)
 
     # define global grid
@@ -142,16 +142,31 @@ if rank == 0:
                     send_to[neighbor_part].add(node)
                     recv_from[neighbor_part].add(neighbor)
 
+        # get ghost and artificial nodes
         ghost_nodes = [int(node) for pid, node_list in recv_from.items() for node in node_list]
+        artificial_nodes = []
+        for ghost_node in ghost_nodes:
+            for ghost_neighbor in adjacency_list[ghost_node]:
+                neighbor_part = part_labels[ghost_neighbor]
+                if (neighbor_part != rank) and (ghost_neighbor not in ghost_nodes):
+                    recv_from[neighbor_part].add(ghost_neighbor)
+                    if ghost_neighbor not in artificial_nodes:
+                        artificial_nodes.append(ghost_neighbor)
 
-        vmg_global_ind = sorted(local_nodes + ghost_nodes)
+        # identify node index for different types
+        vmg_global_ind = sorted(local_nodes + ghost_nodes + artificial_nodes)
+        local_nodes_ind = [vmg_global_ind.index(val) for val in sorted(local_nodes)]
+        local_ghost_nodes_ind = [vmg_global_ind.index(val) for val in sorted(ghost_nodes)]
+        local_artificial_nodes_ind = [vmg_global_ind.index(val) for val in sorted(artificial_nodes)]
+
+        local_boundary_nodes = [node for node in local_nodes + ghost_nodes if node in boundary_nodes]
+        local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in
+                                    sorted(artificial_nodes + local_boundary_nodes)]
+
+        # get x, y and elevation data
         x = mg.node_x[vmg_global_ind]
         y = mg.node_y[vmg_global_ind]
         elev = mg.at_node["topographic__elevation"][vmg_global_ind]
-        local_boundary_nodes = [node for node in local_nodes if node in boundary_nodes]
-        local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in
-                                    sorted(ghost_nodes + local_boundary_nodes)]
-        local_nodes_ind = [vmg_global_ind.index(val) for val in sorted(local_nodes)]
 
         # !! Testing code to get each partition x, y boundary info
         # print(f"rank:{rank}")
@@ -162,17 +177,25 @@ if rank == 0:
 
         if rank != 0:
             comm.send(
-                (vmg_global_ind, x, y, elev,local_boundary_nodes_ind, local_nodes_ind),
+                (vmg_global_ind, x, y, elev,
+                 local_boundary_nodes_ind,
+                 local_nodes_ind,
+                 local_ghost_nodes_ind,
+                 local_artificial_nodes_ind),
                 dest=rank,
                 tag=0
             )
             comm.send((send_to, recv_from), dest=rank, tag=1)
 
-
-
 else:
-    vmg_global_ind, x, y, elev,local_boundary_nodes_ind, local_nodes_ind = comm.recv(source=0, tag=0)
+    (vmg_global_ind, x, y, elev,
+     local_boundary_nodes_ind,
+     local_nodes_ind,
+     local_ghost_nodes_ind,
+     local_artificial_nodes_ind) = comm.recv(source=0, tag=0)
+
     send_to, recv_from = comm.recv(source=0, tag=1)
+
     output_dir = None
     output_pvtu = None
 
@@ -211,10 +234,23 @@ fig, ax = plt.subplots(figsize=[18, 14])
 sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
            c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm", vmin=-3)
 ax.set_title(f'subgrid nodes rank={rank}')
+
 for node_id in local_boundary_nodes_ind:
     ax.annotate(f"B",
                 (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                color='blue', fontsize=12, ha='center', va='top')
+                color='blue', fontsize=10, ha='left', va='bottom')
+for node_id in local_ghost_nodes_ind:
+    ax.annotate(f"G",
+                (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+                color='red', fontsize=10, ha='right', va='bottom')
+for node_id in local_artificial_nodes_ind:
+    ax.annotate(f"A",
+                (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+                color='green', fontsize=10, ha='right', va='bottom')
+for node_id in range(0,local_vmg.number_of_nodes):
+    ax.annotate(f"{vmg_global_ind[node_id]}/{rank}",
+                (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+                color='black', fontsize=8, ha='center', va='top')
 cbar = fig.colorbar(sc, ax=ax)
 cbar.set_label('Elevation (m)')
 fig.savefig(os.path.join(output_dir,f'subgrid_for_rank{rank}.png'))
@@ -227,6 +263,12 @@ ssd = SimpleSubmarineDiffuser(
 )
 
 time_steps = list(range(0,50))
+
+# # assign artificial nodes value as no data
+for field_name in local_vmg.at_node:
+    local_vmg.at_node[field_name][local_artificial_nodes_ind] = np.nan
+    # print(field_name)
+    # print(local_vmg.at_node[field_name][local_artificial_nodes_ind])
 
 # define visual grid for local nodes
 vis_x = x[local_nodes_ind].tolist()
@@ -291,6 +333,11 @@ for time_step in time_steps:
     ## step7: make vtu file for each rank at each time step
     with open(os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w") as fp:
         fp.write(vtu_dump(vis_vmg))
+
+# Testing!! check the artificial node values
+# for field_name in local_vmg.at_node:
+#     print(field_name)
+#     print(local_vmg.at_node[field_name][local_artificial_nodes_ind])
 
 # check sum values
 local_sum = local_vmg.at_node["topographic__elevation"][local_nodes_ind].sum()
