@@ -51,8 +51,11 @@ if rank == 0:
     ## step 1: define hex model grid and assign z values
 
     # create output dir for global grid
-    output_dir = os.path.join(os.getcwd(),'output_global')
+    output_dir = os.path.join(os.getcwd(),f'output_png_{num_partitions}')
     os.makedirs(output_dir, exist_ok=True)
+
+    output_pvtu = os.path.join(os.getcwd(),f'output_pvtu_{num_partitions}')
+    os.makedirs(output_pvtu, exist_ok=True)
 
     # define global grid
     mg = HexModelGrid((17, 17), spacing=1, node_layout='rect')
@@ -196,9 +199,6 @@ local_vmg.status_at_node[local_boundary_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_
 
 
 # plot subgrid for each rank
-output_sub_dir = os.path.join(os.getcwd(), f"output_rank{rank}")
-os.makedirs(output_sub_dir, exist_ok=True)
-
 fig, ax = plt.subplots(figsize=[18, 14])
 sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
            c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm", vmin=-3)
@@ -209,7 +209,7 @@ for node_id in local_boundary_nodes_ind:
                 color='blue', fontsize=12, ha='center', va='top')
 cbar = fig.colorbar(sc, ax=ax)
 cbar.set_label('Elevation (m)')
-fig.savefig(os.path.join(output_sub_dir,f'subgrid_for_rank{rank}.png'))
+fig.savefig(os.path.join(output_dir,f'subgrid_for_rank{rank}.png'))
 plt.close(fig)
 
 ## step 5: run simulation
@@ -257,11 +257,11 @@ for time_step in time_steps:
     # plt.close(fig)
 
     ## step7: make vtu file for each rank at each time step
-    with open(os.path.join(output_sub_dir, f"rank{rank}_{time_step}.vtu"), "w") as fp:
-        fp.write(vtu_dump(local_vmg))
+    with open(os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w") as fp:
+        fp.write(vtu_dump(vis_vmg))
 
 # check sum values
-local_sum = local_vmg.at_node["topographic__elevation"][local_vmg.core_nodes].sum()
+local_sum = local_vmg.at_node["topographic__elevation"][local_nodes_ind].sum()
 print(f"{rank}: {local_sum}")
 global_sum = comm.allreduce(local_sum, op=MPI.SUM)
 
@@ -275,19 +275,8 @@ if rank==0:
     # check global sum
     print(global_sum)
 
-    # create pvtu files for each time step
-    output_pvtu = os.path.join(os.getcwd(),'output_pvtu')
-    os.makedirs(output_pvtu, exist_ok=True)
-
     pvtu_files = []
     for time_step in time_steps:
-        # move vtu files to one folder
-        for i in range(0, num_partitions):
-            shutil.move(
-                os.path.join(os.getcwd(), f"output_rank{i}", f"rank{i}_{time_step}.vtu"),
-                output_pvtu
-            )
-
         # write pvtu file for each time step
         with open(os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w") as fp:
             fp.write(pvtu_dump(local_vmg,
