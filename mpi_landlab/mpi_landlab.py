@@ -151,6 +151,7 @@ if rank == 0:
         local_boundary_nodes = [node for node in local_nodes if node in boundary_nodes]
         local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in
                                     sorted(ghost_nodes + local_boundary_nodes)]
+        local_nodes_ind = [vmg_global_ind.index(val) for val in sorted(local_nodes)]
 
         # !! Testing code to get each partition x, y boundary info
         # print(f"rank:{rank}")
@@ -161,15 +162,22 @@ if rank == 0:
 
         if rank != 0:
             comm.send(
-                (vmg_global_ind, x, y, elev,local_boundary_nodes_ind),
+                (vmg_global_ind, x, y, elev,local_boundary_nodes_ind, local_nodes_ind),
                 dest=rank,
                 tag=0
             )
             comm.send((send_to, recv_from), dest=rank, tag=1)
 
+
+
 else:
-    vmg_global_ind, x, y, elev,local_boundary_nodes_ind = comm.recv(source=0, tag=0)
+    vmg_global_ind, x, y, elev,local_boundary_nodes_ind, local_nodes_ind = comm.recv(source=0, tag=0)
     send_to, recv_from = comm.recv(source=0, tag=1)
+    output_dir = None
+    output_pvtu = None
+
+output_dir = comm.bcast(output_dir, root=0)
+output_pvtu = comm.bcast(output_pvtu, root=0)
 
 
 ## step4: define local model grid
@@ -220,11 +228,35 @@ ssd = SimpleSubmarineDiffuser(
 
 time_steps = list(range(0,50))
 
+# define visual grid for local nodes
+vis_x = x[local_nodes_ind].tolist()
+vis_y = y[local_nodes_ind].tolist()
+vis_vmg = VoronoiDelaunayGrid(vis_x, vis_y)  # x, y needs to be list type
+
+for field_name in local_vmg.at_node:
+    data = local_vmg.at_node[field_name][local_nodes_ind]
+    vis_vmg.add_field(field_name, data, at="node")
+
+# plot visual grid
+fig, ax = plt.subplots(figsize=[18, 14])
+sc = ax.scatter(vis_vmg.node_x, vis_vmg.node_y,
+           c=vis_vmg.at_node["topographic__elevation"], cmap="coolwarm", vmin=-3)
+ax.set_title(f'subgrid local nodes only rank={rank}')
+cbar = fig.colorbar(sc, ax=ax)
+cbar.set_label('Elevation (m)')
+fig.savefig(os.path.join(output_dir,f'vis_subgrid_for_rank{rank}.png'))
+plt.close(fig)
+
 # loop for multiple time steps
 for time_step in time_steps:
 
     # run one step
     ssd.run_one_step(0.2)
+
+    # assign value to local nodes grid for visualization
+    for field_name in local_vmg.at_node:
+        vis_elev = local_vmg.at_node[field_name][local_nodes_ind]
+        vis_vmg.at_node[field_name] = vis_elev[:]
 
     ## step6: send and receive data for ghost nodes
     for pid, nodes_to_send in send_to.items():
