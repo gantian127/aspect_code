@@ -297,6 +297,14 @@ local_sum = local_vmg.at_node["topographic__elevation"][local_nodes_ind].sum()
 print(f"{rank}: {local_sum}")
 global_sum = comm.allreduce(local_sum, op=MPI.SUM)
 
+# pass local nodes values
+local_updates = []
+for node in local_nodes_ind:
+    local_updates.append((vmg_global_ind[node],
+                          local_vmg.at_node["topographic__elevation"][node]))
+
+all_updates = comm.gather(local_updates, root=0)
+
 if rank==0:
     # # Flatten list of updates from all ranks
     # flat_updates = [item for sublist in all_updates for item in sublist]
@@ -307,6 +315,16 @@ if rank==0:
     # check global sum
     print(global_sum)
 
+    # save final global elevation results
+    flat_updates = [item for sublist in all_updates for item in sublist]
+    for node_id, elev in flat_updates:
+        mg.at_node["topographic__elevation"][node_id] = elev
+
+    np.save(os.path.join(output_dir, f"elevation_result_{num_partitions}.npy"),
+                         mg.at_node["topographic__elevation"])
+
+
+    # create pvtu files for each time step
     pvtu_files = []
     for time_step in time_steps:
         # write pvtu file for each time step
