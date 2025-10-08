@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.components import SimpleSubmarineDiffuser
+from landlab.plot.graph import plot_graph
 from plot_utils import vtu_dump, pvtu_dump, create_pvd
 
 
@@ -89,6 +90,14 @@ if rank == 0:
     plt.ylabel("Elevation (m)")
     plt.savefig(os.path.join(output_dir,"dem_hex_slice.png"))
     plt.close()
+
+    # plot node, cell, link
+    for option in ['link', 'node', 'cell']:
+        fig, ax = plt.subplots(figsize=(16, 16))
+        plot_graph(mg, at=option, axes=ax)
+        ax.set_title(f'{option} graph for global grid')
+        fig.savefig(os.path.join(output_dir, f'{option}_global_grid.png'))
+        plt.close(fig)
 
     # plot total_deposit__thickness
     mg.imshow("total_deposit__thickness", cmap="coolwarm", vmin=-1,vmax=1)
@@ -219,6 +228,14 @@ cbar = fig.colorbar(sc, ax=ax)
 cbar.set_label('Elevation (m)')
 fig.savefig(os.path.join(output_dir,f'subgrid_for_rank{rank}.png'))
 plt.close(fig)
+
+# plot subgrid of link, cell, node
+for option in ['link','node','cell']:
+    fig, ax = plt.subplots(figsize=(16, 16))
+    plot_graph(local_vmg, at=option, axes=ax)
+    ax.set_title(f'{option} graph for rank={rank}')
+    fig.savefig(os.path.join(output_dir, f'{option}_subgrid_{rank}.png'))
+    plt.close(fig)
 
 ## step 5: run simulation
 # define model
