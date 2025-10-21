@@ -9,5 +9,6 @@ dependencies = [
     "landlab==2.9.2",
     "mpi4py",
     "pymetis>=2025.2.1",
-    "meshio>=5.3.5"
+    "meshio>=5.3.5",
+    "landlab_parallel==0.1.0",
 ]
