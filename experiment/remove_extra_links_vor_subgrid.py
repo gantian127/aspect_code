@@ -24,6 +24,7 @@ from landlab.plot.graph import plot_graph
 ## user settings
 num_partitions = 3
 hex_grid_shape = (10, 10)
+figsize = (30,20)
 
 create_vor_grid = False
 create_data_file = True
@@ -52,7 +53,7 @@ boundary_nodes = mg.boundary_nodes
 
 # make graph plots for hex model
 for option in ["node", "link", "cell"]:
-    fig, ax = plt.subplots(figsize=(16, 16))
+    fig, ax = plt.subplots(figsize=figsize)
     plot_graph(
         mg,
         at=option,
@@ -80,7 +81,7 @@ n_cuts, part_labels = pymetis.part_graph(num_partitions, adjacency=adjacency_lis
 partition_array = np.array(part_labels)
 
 # plot partition results
-fig, ax = plt.subplots(figsize=[16, 14])
+fig, ax = plt.subplots(figsize=figsize)
 ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
 ax.set_title("grid partition based on nodes")
 for node_id in mg.nodes.flat:
@@ -157,7 +158,7 @@ for rank in range(0, num_partitions):
 
         # make graph plot for vor grid
         for option in ["node", "link", "cell"]:
-            fig, ax = plt.subplots(figsize=(16, 16))
+            fig, ax = plt.subplots(figsize=figsize)
             plot_graph(
                 local_vmg,
                 at=option,
@@ -169,7 +170,7 @@ for rank in range(0, num_partitions):
             plt.close(fig)
 
         # make partition plot for vor grid
-        fig, ax = plt.subplots(figsize=[18, 14])
+        fig, ax = plt.subplots(figsize=figsize)
         sc = ax.scatter(
             local_vmg.node_x,
             local_vmg.node_y,
@@ -288,7 +289,7 @@ for rank in range(0, num_partitions):
         (y, x), sort=True, perimeter_links=local_boundary_links_tail_head_nodes
     )
     for option in ["node", "link", "cell"]:
-        fig, ax = plt.subplots(figsize=(16, 16))
+        fig, ax = plt.subplots(figsize=figsize)
         plot_graph(
             vor_graph,
             at=option,
@@ -310,7 +311,7 @@ for rank in range(0, num_partitions):
 
     # make graph plot for vor grid
     for option in ["node", "link", "cell"]:
-        fig, ax = plt.subplots(figsize=(16, 16))
+        fig, ax = plt.subplots(figsize=figsize)
         plot_graph(
             local_vmg_adj,
             at=option,
