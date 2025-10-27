@@ -3,7 +3,8 @@ This is an experiment to use pymetis and mpi4py for landlab parallel
 
 Test to run on
 SimpleSubmarineDiffuser
-https://landlab.csdms.io/tutorials/marine_sediment_transport/simple_submarine_diffuser_tutorial.html
+https://landlab.csdms.io/tutorials/marine_sediment_transport/simple_submarine_diffuser_
+tutorial.html
 
 ver3: identify boundary nodes for each subdomain, run model with multiple times
 
@@ -11,6 +12,7 @@ To run the program:
 mpiexec -np 5 python mpi_landlab3.py
 
 """
+
 import os
 import numpy as np
 import pymetis
@@ -33,17 +35,18 @@ size = comm.Get_size()
 
 # Ensure number of partitions matches the MPI processes
 num_partitions = size
-assert size == num_partitions, "Number of MPI processes must match the number of partitions!"
+assert (
+    size == num_partitions
+), "Number of MPI processes must match the number of partitions!"
 
 if rank == 0:
-    output_dir = os.path.join(os.getcwd(),'output')
+    output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(output_dir, exist_ok=True)
 
     ## step 1: define hex model grid and assign z values
-    mg = HexModelGrid((17, 17), spacing=1, node_layout='rect')
+    mg = HexModelGrid((17, 17), spacing=1, node_layout="rect")
     z = mg.add_zeros("topographic__elevation", at="node")
     cum_depo = mg.add_zeros("total_deposit__thickness", at="node")
-
 
     midpoint = 8
     dx = np.abs(mg.x_of_node - midpoint)
@@ -67,14 +70,13 @@ if rank == 0:
     plt.grid(True)
     plt.xlabel("Distance (m)")
     plt.ylabel("Elevation (m)")
-    plt.savefig(os.path.join(output_dir,"dem_hex_slice.png"))
+    plt.savefig(os.path.join(output_dir, "dem_hex_slice.png"))
 
     # plot total_deposit__thickness
     plt.clf()
-    mg.imshow("total_deposit__thickness", cmap="coolwarm", vmin=-1,vmax=1)
+    mg.imshow("total_deposit__thickness", cmap="coolwarm", vmin=-1, vmax=1)
     plt.title("Total deposit thickness initiation (m)")
-    plt.savefig(os.path.join(output_dir,"total_deposit_init.png"))
-
+    plt.savefig(os.path.join(output_dir, "total_deposit_init.png"))
 
     ## step2: grid partition
     num_partitions = 5
@@ -95,13 +97,18 @@ if rank == 0:
 
     # visualization
     fig, ax = plt.subplots(figsize=[16, 14])
-    ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap='viridis')
-    ax.set_title('grid partition based on nodes')
+    ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
+    ax.set_title("grid partition based on nodes")
     for node_id in mg.nodes.flat:
-        ax.annotate(f"{node_id}/par{partition_array[node_id]}",
-                    (mg.node_x[node_id], mg.node_y[node_id]),
-                    color='black', fontsize=8, ha='center', va='top')
-    fig.savefig(os.path.join(output_dir,'global_grid_partition.png'))
+        ax.annotate(
+            f"{node_id}/par{partition_array[node_id]}",
+            (mg.node_x[node_id], mg.node_y[node_id]),
+            color="black",
+            fontsize=8,
+            ha="center",
+            va="top",
+        )
+    fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
 
     print(f"grid partition at rank {rank}")
 else:
@@ -136,7 +143,7 @@ for node in local_nodes:
             recv_from[neighbor_part].add(neighbor)
 
 # loop for multiple time steps
-for time_step in range(0,50):
+for time_step in range(0, 50):
     mg = comm.bcast(mg, root=0)
     ## step4: send and receive data for ghost nodes
     for pid, nodes_to_send in send_to.items():
@@ -144,16 +151,15 @@ for time_step in range(0,50):
         nodes_to_send = sorted(nodes_to_send)
         elev_to_send = mg.at_node["topographic__elevation"][list(nodes_to_send)]
         comm.send((nodes_to_send, elev_to_send), dest=pid, tag=rank)
-        #print(f"Rank {rank} sent data to {pid} for nodes: {nodes_to_send}")
+        # print(f"Rank {rank} sent data to {pid} for nodes: {nodes_to_send}")
 
-    ghost_nodes_values= {}
+    ghost_nodes_values = {}
     for pid, ghost_nodes in recv_from.items():
         nodes, elev_values = comm.recv(source=pid, tag=pid)
         ghost_nodes_values.update(dict(zip(nodes, elev_values)))
-        #if rank==1:
-            #print(f"Rank {rank} received ghost data from {pid} for nodes {nodes}")
-            #print(ghost_nodes_values)
-
+        # if rank==1:
+        # print(f"Rank {rank} received ghost data from {pid} for nodes {nodes}")
+        # print(ghost_nodes_values)
 
     ## step5: define local grid for simulation
     # define voronoi grid
@@ -170,12 +176,18 @@ for time_step in range(0,50):
     #     print(elev_local)
     local_vmg = VoronoiDelaunayGrid(x, y)
     local_vmg.add_field("topographic__elevation", elev_local, at="node")
-    local_cum_depo = local_vmg.add_field("total_deposit__thickness", cum_depo_local, at="node")
+    local_cum_depo = local_vmg.add_field(
+        "total_deposit__thickness", cum_depo_local, at="node"
+    )
     local_z0 = elev_local.copy()
 
     local_nodes_as_boundary = [node for node in local_nodes if node in boundary_nodes]
-    local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in ghost_nodes + local_nodes_as_boundary]
-    local_vmg.status_at_node[local_boundary_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
+    local_boundary_nodes_ind = [
+        vmg_global_ind.index(val) for val in ghost_nodes + local_nodes_as_boundary
+    ]
+    local_vmg.status_at_node[local_boundary_nodes_ind] = (
+        local_vmg.BC_NODE_IS_FIXED_VALUE
+    )
     # print(local_nodes_as_boundary)
     # print(local_boundary_nodes_ind)
     # print(vmg_global_ind)
@@ -183,13 +195,17 @@ for time_step in range(0,50):
 
     # plot subgrid for each rank
     fig, ax = plt.subplots(figsize=[18, 14])
-    sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
-               c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm", vmin=-3)
-    ax.set_title(f'subgrid nodes rank={rank}')
+    sc = ax.scatter(
+        local_vmg.node_x,
+        local_vmg.node_y,
+        c=local_vmg.at_node["topographic__elevation"],
+        cmap="coolwarm",
+        vmin=-3,
+    )
+    ax.set_title(f"subgrid nodes rank={rank}")
     cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label('Elevation (m)')
-    fig.savefig(os.path.join(output_dir,f'subgrid_for_rank{rank}.png'))
-
+    cbar.set_label("Elevation (m)")
+    fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
 
     ## step 6: run simulation
     # define model
@@ -204,28 +220,39 @@ for time_step in range(0,50):
     # plot results
     elev_diff = (local_z0 - elev_local) * 100
     fig, ax = plt.subplots(figsize=[16, 14])
-    sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,c=elev_diff, cmap="coolwarm", vmin=-6,vmax=6)
-    ax.set_title(f'Changes of elevation rank={rank}')
+    sc = ax.scatter(
+        local_vmg.node_x,
+        local_vmg.node_y,
+        c=elev_diff,
+        cmap="coolwarm",
+        vmin=-6,
+        vmax=6,
+    )
+    ax.set_title(f"Changes of elevation rank={rank}")
     for node_id in local_boundary_nodes_ind:
-        ax.annotate(f"B",
-                    (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                    color='blue', fontsize=12, ha='center', va='top')
+        ax.annotate(
+            "B",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="blue",
+            fontsize=12,
+            ha="center",
+            va="top",
+        )
     cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label('Elevation Change (cm)')
-    fig.savefig(os.path.join(output_dir,f'elev_diff_for_rank{rank}.png'))
+    cbar.set_label("Elevation Change (cm)")
+    fig.savefig(os.path.join(output_dir, f"elev_diff_for_rank{rank}.png"))
 
     # close all plots
-    plt.close('all')
+    plt.close("all")
 
     ## step 7 gather all updates to rank 0
     # Create local update data (only for owned nodes, not ghost)
     local_updates = []
     for node in local_nodes:
         vmg_local_ind = vmg_global_ind.index(node)
-        local_updates.append( (node,
-                                elev_local[vmg_local_ind],
-                                local_cum_depo[vmg_local_ind]) )
-
+        local_updates.append(
+            (node, elev_local[vmg_local_ind], local_cum_depo[vmg_local_ind])
+        )
 
     all_updates = comm.gather(local_updates, root=0)
 
@@ -236,28 +263,30 @@ for time_step in range(0,50):
             mg.at_node["topographic__elevation"][node_id] = elev
             mg.at_node["total_deposit__thickness"][node_id] = cum_depo
 
-        #print(z0 == mg.at_node["topographic__elevation"])
+        # print(z0 == mg.at_node["topographic__elevation"])
 
         # plot results
         # diff_z and total_deposit_result should be the same
         plt.clf()
         mg.imshow("total_deposit__thickness", cmap="coolwarm")
         plt.title("Total deposit thickness results (m)")
-        plt.savefig(os.path.join(output_dir,"total_deposit_result.png"))
+        plt.savefig(os.path.join(output_dir, "total_deposit_result.png"))
 
         plt.clf()
         diff_z = mg.at_node["topographic__elevation"] - z0
         mg.imshow(diff_z, cmap="coolwarm")
         plt.title("Changes of elevation (m)")
-        plt.savefig(os.path.join(output_dir,"dem_diff_hex_model_result.png"))
+        plt.savefig(os.path.join(output_dir, "dem_diff_hex_model_result.png"))
 
         plt.clf()
         mg.imshow("topographic__elevation", cmap="coolwarm")
         plt.title("Topographic elevation result (m)")
-        plt.savefig(os.path.join(output_dir,"dem_hex_model_result.png"))
-        plt.close('all')
+        plt.savefig(os.path.join(output_dir, "dem_hex_model_result.png"))
+        plt.close("all")
 
         print(f"loop {time_step}")
         print(diff_z.max(), diff_z.min())
-        print(mg.at_node["total_deposit__thickness"].max(),
-              mg.at_node["total_deposit__thickness"].min())
+        print(
+            mg.at_node["total_deposit__thickness"].max(),
+            mg.at_node["total_deposit__thickness"].min(),
+        )

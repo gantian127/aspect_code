@@ -174,7 +174,9 @@ def create_pvd(pvtu_files, timesteps, output_pvd="simulation.pvd"):
     output_pvd : str
         Output PVD filename
     """
-    vtkfile = ET.Element("VTKFile", type="Collection", version="0.1", byte_order="LittleEndian")
+    vtkfile = ET.Element(
+        "VTKFile", type="Collection", version="0.1", byte_order="LittleEndian"
+    )
     collection = ET.SubElement(vtkfile, "Collection")
 
     for file, t in zip(pvtu_files, timesteps):
