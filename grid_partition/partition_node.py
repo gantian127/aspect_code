@@ -13,8 +13,7 @@ https://landlab.readthedocs.io/en/latest/user_guide/grid.html
 
 import numpy as np
 import pymetis
-import matplotlib
-matplotlib.use('MacOSX')
+
 import matplotlib.pyplot as plt
 from landlab import RasterModelGrid
 
@@ -53,13 +52,18 @@ partition_array = np.array(part_labels)
 mg.add_field("grid_partition", partition_array, at="node")
 
 # visualization
-fig, ax = plt.subplots(figsize=(16,14))
-mg.at_node['default'] = np.zeros([16, 16])
-mg.imshow('default')
-ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap='viridis')
-ax.set_title('grid partition based on nodes')
+fig, ax = plt.subplots(figsize=(16, 14))
+mg.at_node["default"] = np.zeros([16, 16])
+mg.imshow("default")
+ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
+ax.set_title("grid partition based on nodes")
 for node_id in mg.nodes.flat:
-    ax.annotate(f"{node_id}/par{partition_array[node_id]}",
-                (mg.node_x[node_id], mg.node_y[node_id]),
-                color='black', fontsize=8, ha='center', va='top')
-fig.savefig('grid_partition_nodes.png')
+    ax.annotate(
+        f"{node_id}/par{partition_array[node_id]}",
+        (mg.node_x[node_id], mg.node_y[node_id]),
+        color="black",
+        fontsize=8,
+        ha="center",
+        va="top",
+    )
+fig.savefig("grid_partition_nodes.png")
