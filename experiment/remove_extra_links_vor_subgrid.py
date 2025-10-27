@@ -8,6 +8,7 @@ pass these nodes list to voronoi graph as perimeter_link
 """
 
 import os
+import json
 import numpy as np
 import pymetis
 
@@ -20,15 +21,20 @@ from landlab.graph import DualVoronoiGraph
 from landlab.plot.graph import plot_graph
 
 
-# decide whether create vor grid
-create_vor_grid = True
+## user settings
+num_partitions = 3
+hex_grid_shape = (10,10)
+
+create_vor_grid = False
+create_data_file = True
 
 # create output dir
-output_dir = os.path.join(os.getcwd(),"experiment","remove_extra_links_vor_subgrid_new_test")
+output_dir = os.path.join(os.getcwd(),"experiment",
+                          f"remove_extra_links_vor_subgrid_{hex_grid_shape}_{num_partitions}")
 os.makedirs(output_dir, exist_ok=True)
 
 ## step1: define global grid
-mg = HexModelGrid((10, 10), spacing=1, node_layout='rect')
+mg = HexModelGrid(hex_grid_shape, spacing=1, node_layout='rect')
 z = mg.add_zeros("topographic__elevation", at="node")
 
 midpoint = 8
@@ -44,14 +50,16 @@ boundary_nodes = mg.boundary_nodes
 # make graph plots for hex model
 for option in ['node', 'link', 'cell']:
     fig, ax = plt.subplots(figsize=(16, 16))
-    plot_graph(mg, at=option, axes=ax)
+    plot_graph(mg, at=option, axes=ax,
+               with_id=True,
+               #fontsize=7
+               )
     ax.set_title(f'hex_grid_{option}')
     fig.savefig(os.path.join(output_dir, f'hex_grid_{option}.png'))
     plt.close(fig)
 
 ## step2: grid partition
 adjacency_list = []
-num_partitions = 3
 
 # create adjacency list for corners
 for node_id in mg.nodes.flat:
@@ -75,11 +83,11 @@ for node_id in mg.nodes.flat:
                 color='black', fontsize=8, ha='center', va='top')
 fig.savefig(os.path.join(output_dir, 'global_grid_partition.png'))
 plt.close(fig)
-
+print('grid partition done')
 
 ## step3 Identify ghost and hollow nodes
 for rank in range(0, num_partitions):
-
+    print(f"start rank {rank}")
     # get local nodes
     local_nodes = [node for node, part in enumerate(part_labels) if part == rank]
 
@@ -133,7 +141,10 @@ for rank in range(0, num_partitions):
         # make graph plot for vor grid
         for option in ['node','link','cell']:
             fig, ax = plt.subplots(figsize=(16,16))
-            plot_graph(local_vmg, at=option,axes=ax)
+            plot_graph(local_vmg, at=option,axes=ax,
+                        with_id=True,
+                        #fontsize=7
+            )
             fig.savefig(os.path.join(output_dir,f'vor_grid_{option}_{rank}.png'))
             plt.close(fig)
 
@@ -226,7 +237,10 @@ for rank in range(0, num_partitions):
     )
     for option in ['node', 'link', 'cell']:
         fig, ax = plt.subplots(figsize=(16, 16))
-        plot_graph(vor_graph, at=option, axes=ax)
+        plot_graph(vor_graph, at=option, axes=ax,
+                   with_id=True,
+                   #fontsize=7
+                   )
         ax.set_title(f'vor_graph_{option}_{rank}')
         fig.savefig(os.path.join(output_dir, f'vor_graph_{option}_{rank}.png'))
         plt.close(fig)
@@ -240,6 +254,25 @@ for rank in range(0, num_partitions):
     # make graph plot for vor grid
     for option in ['node', 'link', 'cell']:
         fig, ax = plt.subplots(figsize=(16, 16))
-        plot_graph(local_vmg_adj, at=option, axes=ax)
+        plot_graph(local_vmg_adj, at=option, axes=ax,
+                   with_id=True,
+                   #fontsize=7
+                   )
         fig.savefig(os.path.join(output_dir, f'vor_grid_adj_{option}_{rank}.png'))
         plt.close(fig)
+
+    # save the grid info as json files
+    if create_data_file:
+        data = {
+            'x': x.tolist(),
+            'y': y.tolist(),
+            'perimeter_links': local_boundary_links_tail_head_nodes
+        }
+
+        with open(os.path.join(output_dir, f"data_input_{rank}.json"), "w") as f:
+            json.dump(data, f, indent=2)
+
+
+    print(f"end rank {rank}")
+
+print("Done!")
