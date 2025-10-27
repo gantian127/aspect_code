@@ -15,11 +15,11 @@ from collections import defaultdict
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 
 # create output dir for global grid
-output_dir = os.path.join(os.getcwd(), 'experiment/hollow_nodes_test')
+output_dir = os.path.join(os.getcwd(), "experiment/hollow_nodes_test")
 os.makedirs(output_dir, exist_ok=True)
 
 ## step1: define global grid
-mg = HexModelGrid((17, 17), spacing=1, node_layout='rect')
+mg = HexModelGrid((17, 17), spacing=1, node_layout="rect")
 z = mg.add_zeros("topographic__elevation", at="node")
 cum_depo = mg.add_zeros("total_deposit__thickness", at="node")
 
@@ -35,7 +35,7 @@ boundary_nodes = mg.boundary_nodes
 
 ## step2: grid partition
 adjacency_list = []
-num_partitions=4
+num_partitions = 4
 
 # create adjacency list for corners
 for node_id in mg.nodes.flat:
@@ -51,13 +51,18 @@ partition_array = np.array(part_labels)
 
 # visualization
 fig, ax = plt.subplots(figsize=[16, 14])
-ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap='viridis')
-ax.set_title('grid partition based on nodes')
+ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
+ax.set_title("grid partition based on nodes")
 for node_id in mg.nodes.flat:
-    ax.annotate(f"{node_id}/par{partition_array[node_id]}",
-                (mg.node_x[node_id], mg.node_y[node_id]),
-                color='black', fontsize=8, ha='center', va='top')
-fig.savefig(os.path.join(output_dir, 'global_grid_partition.png'))
+    ax.annotate(
+        f"{node_id}/par{partition_array[node_id]}",
+        (mg.node_x[node_id], mg.node_y[node_id]),
+        color="black",
+        fontsize=8,
+        ha="center",
+        va="top",
+    )
+fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
 plt.close(fig)
 
 ## step3 Identify ghost and hollow nodes
@@ -85,10 +90,9 @@ for rank in range(0, num_partitions):
                 #     if test_node_part == rank:
                 #         send_to[neighbor_part].add(test_node)
 
-
-    ghost_nodes = [int(node) for pid, node_list in recv_from.items() for node in
-                   node_list]
-
+    ghost_nodes = [
+        int(node) for pid, node_list in recv_from.items() for node in node_list
+    ]
 
     # hollow nodes for each rank
     hollow_nodes = []
@@ -114,41 +118,69 @@ for rank in range(0, num_partitions):
 
     local_ghost_nodes_ind = [vmg_global_ind.index(val) for val in ghost_nodes]
     local_hollow_nodes_ind = [vmg_global_ind.index(val) for val in hollow_nodes]
-    local_boundary_nodes = [node for node in local_nodes+ghost_nodes if node in boundary_nodes]
-    local_boundary_nodes_ind = [vmg_global_ind.index(val) for val in
-                                sorted(hollow_nodes + local_boundary_nodes)]
+    local_boundary_nodes = [
+        node for node in local_nodes + ghost_nodes if node in boundary_nodes
+    ]
+    local_boundary_nodes_ind = [
+        vmg_global_ind.index(val) for val in sorted(hollow_nodes + local_boundary_nodes)
+    ]
 
     local_vmg = VoronoiDelaunayGrid(x.tolist(), y.tolist())
     local_vmg.add_field("topographic__elevation", elev, at="node")
-    local_vmg.status_at_node[
-        local_boundary_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
+    local_vmg.status_at_node[local_boundary_nodes_ind] = (
+        local_vmg.BC_NODE_IS_FIXED_VALUE
+    )
 
     # make a plot
     fig, ax = plt.subplots(figsize=[18, 14])
-    sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
-                    c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
-                    vmin=-3)
-    ax.set_title(f'subgrid nodes rank={rank}')
+    sc = ax.scatter(
+        local_vmg.node_x,
+        local_vmg.node_y,
+        c=local_vmg.at_node["topographic__elevation"],
+        cmap="coolwarm",
+        vmin=-3,
+    )
+    ax.set_title(f"subgrid nodes rank={rank}")
     for node_id in local_boundary_nodes_ind:
-        ax.annotate(f"B",
-                    (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                    color='blue', fontsize=10, ha='left', va='bottom')
+        ax.annotate(
+            "B",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="blue",
+            fontsize=10,
+            ha="left",
+            va="bottom",
+        )
     for node_id in local_ghost_nodes_ind:
-        ax.annotate(f"G",
-                    (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                    color='red', fontsize=10, ha='right', va='bottom')
+        ax.annotate(
+            "G",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="red",
+            fontsize=10,
+            ha="right",
+            va="bottom",
+        )
     for node_id in local_hollow_nodes_ind:
-        ax.annotate(f"H",
-                    (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-                    color='green', fontsize=10, ha='right', va='bottom')
+        ax.annotate(
+            "H",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="green",
+            fontsize=10,
+            ha="right",
+            va="bottom",
+        )
     for node_id in vmg_global_ind:
-        ax.annotate(f"{node_id}/par{partition_array[node_id]}",
-                    (mg.node_x[node_id], mg.node_y[node_id]),
-                    color='black', fontsize=8, ha='center', va='top')
+        ax.annotate(
+            f"{node_id}/par{partition_array[node_id]}",
+            (mg.node_x[node_id], mg.node_y[node_id]),
+            color="black",
+            fontsize=8,
+            ha="center",
+            va="top",
+        )
 
     cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label('Elevation (m)')
-    fig.savefig(os.path.join(output_dir, f'subgrid_for_rank{rank}.png'))
+    cbar.set_label("Elevation (m)")
+    fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
     plt.close(fig)
 
 
