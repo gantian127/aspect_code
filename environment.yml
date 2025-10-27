@@ -49,4 +49,4 @@ dependencies:
     - mypy-extensions==1.1.0
     - tzdata==2025.2
     - cftime==1.6.4.post1
-    - landlab_parallel=0.1.0
+    - landlab_parallel==0.1.0
