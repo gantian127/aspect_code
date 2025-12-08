@@ -24,7 +24,7 @@ from landlab.plot.graph import plot_graph
 ## user settings
 num_partitions = 3
 hex_grid_shape = (10, 10)
-figsize = (30,20)
+figsize = (30, 20)
 
 create_vor_grid = False
 create_data_file = True

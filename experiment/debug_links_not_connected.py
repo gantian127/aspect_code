@@ -2,7 +2,7 @@
 This is to create a small voronoi graph to debug the links not connected error
 
 Methods:
-This needs changes of the landlab code in landlab/src/landlab/graph/object/ext/at_patch.pyx
+This needs changes of the landlab code /src/landlab/graph/object/ext/at_patch.pyx
 
 Key findings:
 - the error info comes from at_patch.pyx line 54
@@ -29,43 +29,73 @@ os.makedirs(output_dir, exist_ok=True)
 grid = HexModelGrid((8, 11), node_layout="rect")
 plt.figure(figsize=(20, 20))
 plot_graph(grid, at="node,link")
-plt.savefig(os.path.join(output_dir,'hex_graph.png'))
+plt.savefig(os.path.join(output_dir, "hex_graph.png"))
 
 # remove nodes and define perimeter_links
 x = grid.x_of_node
 y = grid.y_of_node
 
-ranges = [(0,10), (11,20), (22,31), (33,41), (44,52), (55,61), (66,72)]
+ranges = [(0, 10), (11, 20), (22, 31), (33, 41), (44, 52), (55, 61), (66, 72)]
 remove_ind = [i for start, end in ranges for i in range(start, end)]
 
 perimeter_links = [
-    [0,2],[2,4],[4,7],[7,10],[10,15],[15,20],[20,31],
-    [21,22],[22,23],[23,24],[24,25],[25,26],[26,27],[27,28],[28,29],[29,30],[30,31],
-    [0,1],[1,3],[3,5],[5,8],[8,12],[11,12],[11,16],[16,26],
+    [0, 2],
+    [2, 4],
+    [4, 7],
+    [7, 10],
+    [10, 15],
+    [15, 20],
+    [20, 31],
+    [21, 22],
+    [22, 23],
+    [23, 24],
+    [24, 25],
+    [25, 26],
+    [26, 27],
+    [27, 28],
+    [28, 29],
+    [29, 30],
+    [30, 31],
+    [0, 1],
+    [1, 3],
+    [3, 5],
+    [5, 8],
+    [8, 12],
+    [11, 12],
+    [11, 16],
+    [16, 26],
 ]
 
 # define vor graph
-vor_x = np.delete(x,remove_ind)
-vor_y = np.delete(y,remove_ind)
+vor_x = np.delete(x, remove_ind)
+vor_y = np.delete(y, remove_ind)
 
-graph = DualVoronoiGraph((vor_y, vor_x), sort=True,
-                         perimeter_links=perimeter_links,
-                        )
+graph = DualVoronoiGraph(
+    (vor_y, vor_x),
+    sort=True,
+    perimeter_links=perimeter_links,
+)
 plt.figure(figsize=(16, 16))
 plot_graph(graph, at="node,link")
-plt.savefig(os.path.join(output_dir,'vor_graph.png'))
+plt.savefig(os.path.join(output_dir, "vor_graph.png"))
 
 # plot cell graph
 plt.figure(figsize=(16, 16))
 plot_graph(graph, at="cell")
 
-plt.figure(figsize=(20,20))
-plot_graph(graph, at="cell,face,corner",)
-plt.savefig(os.path.join(output_dir, 'vor_cell.png'))
+plt.figure(figsize=(20, 20))
+plot_graph(
+    graph,
+    at="cell,face,corner",
+)
+plt.savefig(os.path.join(output_dir, "vor_cell.png"))
 
-plt.figure(figsize=(20,20))
-plot_graph(graph, at="corner",)
-plt.savefig(os.path.join(output_dir, 'vor_corner.png'))
+plt.figure(figsize=(20, 20))
+plot_graph(
+    graph,
+    at="corner",
+)
+plt.savefig(os.path.join(output_dir, "vor_corner.png"))
 
 
 # change of at_patch.pyx see # my changes section
