@@ -263,6 +263,24 @@ if rank == 0:
                             perimeter_links_tailhead_local_ind.append(
                                 tail_head_nodes_local_ind
                             )
+        # remove non perimeter links (but with perimeter nodes) from perimeter links
+        edges = np.asarray(perimeter_links_tailhead_local_ind, dtype=int)
+        adj = {}
+        for a, b in edges:
+            adj.setdefault(a, []).append(b)
+            adj.setdefault(b, []).append(a)
+
+        degrees = {n: len(neighbors) for n, neighbors in adj.items()}  # each node had only two links
+        bad_nodes = {n: d for n, d in degrees.items() if d != 2}
+
+        bad_links = [
+            link for link in perimeter_links_tailhead_local_ind
+            if all(v in set(bad_nodes.keys()) for v in link)  # head and tail nodes in bad_nodes
+        ]
+
+        for bad in bad_links:
+            perimeter_links_tailhead_local_ind.remove(bad)
+
 
         # !! Testing code to get each partition x, y boundary info
         # print(f"rank:{rank}")
@@ -474,7 +492,8 @@ for time_step in time_steps:
     ## step6: send and receive data for ghost nodes
     for pid, nodes_to_send in send_to.items():
         # Convert to sorted list
-        nodes_to_send_local_id = [vmg_global_ind.index(val) for val in nodes_to_send]
+        nodes_to_send = sorted(nodes_to_send) # remember to sort the nodes_to_send to make sure the order is correct. (set type has no order)
+        nodes_to_send_local_id = [vmg_global_ind.index(val) for val in sorted(nodes_to_send)]
         elev_to_send = local_vmg.at_node["topographic__elevation"][
             nodes_to_send_local_id
         ]
