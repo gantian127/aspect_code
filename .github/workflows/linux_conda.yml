@@ -17,6 +17,11 @@ env:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Define the number of processors you want to test here
+        np: [1, 2, 4, 6, 8]
 
     steps:
     - uses: actions/checkout@v4
@@ -40,8 +45,8 @@ jobs:
       run: |
         python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
 
-    - name: Run your tests
+    - name: Run Landlab MPI Test
       shell: bash -l {0}
       run: |
-        conda list
-        ./test.sh
+        cd mpi_landlab
+        mpiexec -n ${{ matrix.np }} python mpi_landlab_linear_diffusion.py
