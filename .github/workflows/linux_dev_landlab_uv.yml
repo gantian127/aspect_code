@@ -79,7 +79,7 @@ jobs:
       - name: Debug landlab used at runtime
         run: |
           .venv/bin/python -c "import landlab, os, inspect; from landlab import VoronoiDelaunayGrid; print('landlab file:', os.path.dirname(landlab.__file__)); print('VDG init:', inspect.signature(VoronoiDelaunayGrid.__init__))"
-          .venv/bin/python -m pip show landlab || true
+          uv pip show landlab || true
 
       - name: Check mpi4py works
         run: |
@@ -87,5 +87,4 @@ jobs:
 
       - name: Run Landlab MPI Test (matrix)
         run: |
-          cd mpi_landlab
-          mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab_linear_diffusion.py
+          mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab/mpi_landlab_linear_diffusion.py
