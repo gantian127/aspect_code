@@ -22,9 +22,9 @@ for each_step in time_steps:
     step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
 
 Notes:
-    - this is based on mpi_landlab.py
+    - this is based on mpi_landlab_old_workflow_refine.py
     - added artificial node code
-    - added perimeter links code (old method)
+    - added perimeter links code (old method: identify node types on boundary)
     - added vis_grid for visualization (this needs to add code to identify
       perimeter links, otherwise will show zerodivisionerror and links
       not connected error.)
