@@ -66,12 +66,13 @@ jobs:
 
       - name: Install landlab (editable) with uv
         run: |
+          uv pip uninstall -y landlab || true
           uv pip install -e "${{ github.workspace }}/landlab"
 
-      - name: Debug landlab import path
+      - name: Debug landlab used at runtime
         run: |
           uv run python -c "import landlab, os, inspect; from landlab import VoronoiDelaunayGrid; print('landlab file:', os.path.dirname(landlab.__file__)); print('VDG init:', inspect.signature(VoronoiDelaunayGrid.__init__))"
-          
+
       - name: Install parallel workflow dependencies (uv)
         run: |
           uv pip install mpi4py pymetis
