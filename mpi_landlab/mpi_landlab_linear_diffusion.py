@@ -304,7 +304,7 @@ plt.close(fig)
 # plot subgrid of link, cell, node
 for option in ["link", "node", "cell"]:
     fig, ax = plt.subplots(figsize=(16, 16))
-    plot_graph(local_vmg, at=option, axes=ax, fontsize=5)
+    plot_graph(local_vmg, at=option, axes=ax)
     ax.set_title(f"{option} graph for rank={rank}")
     fig.savefig(os.path.join(output_dir, f"{option}_subgrid_{rank}.png"))
     plt.close(fig)
