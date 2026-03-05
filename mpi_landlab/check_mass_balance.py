@@ -32,8 +32,8 @@ true_elev = np.load(os.path.join(true_file_dir, "elevation_result_1.npy"))
 diff = simulation_elev - true_elev
 diff.reshape(shape)
 
-print(f"rank {rank} == rank {1}: {np.all(simulation_elev==true_elev)}")
-print(f"diff == 0: {np.all(diff==0)}")
+print(f"rank {rank} == rank {1}: {np.all(simulation_elev == true_elev)}")
+print(f"diff == 0: {np.all(diff == 0)}")
 
 plt.imshow(diff.reshape(shape))
 plt.savefig(os.path.join(file_dir, f"elevation_diff_{rank}.png"))
@@ -42,4 +42,4 @@ plt.imshow(simulation_elev.reshape(shape))
 plt.savefig(os.path.join(file_dir, f"elevation_final_{rank}.png"))
 
 plt.imshow(true_elev.reshape(shape))
-plt.savefig(os.path.join(true_file_dir, f"elevation_final_true.png"))
+plt.savefig(os.path.join(true_file_dir, "elevation_final_true.png"))
