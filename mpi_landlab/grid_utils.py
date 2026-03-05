@@ -28,17 +28,17 @@ def get_perimeter_nodes_and_links(points):
     r = 0.5 * (1.0 + np.sqrt(3.0)) * s
 
     # 3) build first-ring neighbor lists and degrees
-    neigh = tree.query_ball_point(pts, r) #idenfity the neighbors within radius r
+    neigh = tree.query_ball_point(pts, r)  # idenfity the neighbors within radius r
     N = []
     deg = np.empty(len(pts), dtype=int)
     for i, lst in enumerate(neigh):
         lst = [j for j in lst if j != i]
         N.append(set(lst))  # index of neighbors within radius r
-        deg[i] = len(lst)   # number of neighbors within radius r (interior nodes=6)
+        deg[i] = len(lst)  # number of neighbors within radius r (interior nodes=6)
 
     # 4) boundary nodes
     bmask = deg < 6
-    bset = set(np.where(bmask)[0]) # use set to speed up neighbor checks below
+    bset = set(np.where(bmask)[0])  # use set to speed up neighbor checks below
 
     # 5) candidate boundary edges: boundary-boundary and are neighbors
     cand = []
