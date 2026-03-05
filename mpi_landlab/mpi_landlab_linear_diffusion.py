@@ -36,8 +36,6 @@ import numpy as np
 from collections import defaultdict
 import warnings
 
-warnings.simplefilter("always")
-
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 import pymetis
@@ -49,6 +47,7 @@ from landlab_parallel.io import vtu_dump, pvtu_dump
 from plot_utils import create_pvd
 from grid_utils import get_perimeter_nodes_and_links
 
+warnings.simplefilter("always")
 
 ## step 0: set up parallel
 comm = MPI.COMM_WORLD
@@ -93,12 +92,12 @@ if rank == 0:
     os.makedirs(output_pvtu, exist_ok=True)
 
     # define global grid
-    mg = HexModelGrid(grid_shape, spacing=spacing, node_layout="rect")  # 6x6 grid with 10m spacing, rectangular layout
+    mg = HexModelGrid(grid_shape, spacing=spacing, node_layout="rect")
     z = mg.add_zeros("topographic__elevation", at="node")
 
-    fault_trace_y = 50.0 + 0.25 * mg.x_of_node  # 5.0
+    fault_trace_y = 50.0 + 0.25 * mg.x_of_node
     z[mg.y_of_node > fault_trace_y] += (
-            10.0 + 0.01 * mg.x_of_node[mg.y_of_node > fault_trace_y]
+        10.0 + 0.01 * mg.x_of_node[mg.y_of_node > fault_trace_y]
     )
     print(f"initial elevation sum: {sum(z)} ")
 
@@ -190,10 +189,10 @@ if rank == 0:
         elev = mg.at_node["topographic__elevation"][vmg_global_ind]
 
         # get local perimeter nodes and links
-        points = np.column_stack((x,y))
+        points = np.column_stack((x, y))
         perimeter_nodes_ind, perimeter_links_ind = get_perimeter_nodes_and_links(points)
 
-        # check if a valid subgrid is created
+        # check if is a valid subgrid
         if len(vmg_global_ind) == len(perimeter_nodes_ind):
             raise ValueError(
                 f"Rank {rank}: subgrid includes no core nodes. "
@@ -338,16 +337,21 @@ for time_step in time_steps:
     # set non-blocking send
     send_reqs = []
     for pid, nodes_to_send in send_to.items():
-        nodes_to_send= sorted(nodes_to_send)
+        nodes_to_send = sorted(nodes_to_send)
         nodes_to_send_local_id = [global2local[val] for val in nodes_to_send]
         elev_to_send = local_vmg.at_node["topographic__elevation"][
-            nodes_to_send_local_id].copy()
+            nodes_to_send_local_id
+        ].copy()
         send_reqs.append(comm.isend((nodes_to_send, elev_to_send), dest=pid, tag=rank))
 
     # wait for all recv to finish and update ghost nodes values (non-blocking receive)
     for pid, req in recv_reqs.items():
-        ghost_nodes, elev_values = req.wait()  # wait for finishing and then get the data
-        ghost_nodes_local_id = np.array([global2local[g] for g in ghost_nodes], dtype=int)
+        ghost_nodes, elev_values = (
+            req.wait()
+        )  # wait for finishing and then get the data
+        ghost_nodes_local_id = np.array(
+            [global2local[g] for g in ghost_nodes], dtype=int
+        )
         local_vmg.at_node["topographic__elevation"][ghost_nodes_local_id] = elev_values
 
     # make sure all send finished before next step
