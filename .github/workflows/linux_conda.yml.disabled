@@ -1,10 +1,7 @@
+# old workflow for reference, not used for now
 name: aspect_code_test
 
 on: [push, pull_request]
-
-concurrency:
-  group: ${{ github.actor }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   OMPI_MCA_btl_base_warn_component_unused: 0
@@ -26,20 +23,22 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libopenmpi-dev openmpi-bin
 
-    - uses: astral-sh/setup-uv@v6
-
-    - name: Set up Python with uv
-      run: |
-        uv python install 3.12
-        uv venv
-        uv sync
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: 3.12
+        activate-environment: test-env
+        environment-file: environment.yml
+        auto-activate-base: false
 
     - name: Check mpi4py works
+      shell: bash -l {0}
       run: |
-        . .venv/bin/activate
         python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
 
     - name: Run your tests
+      shell: bash -l {0}
       run: |
-        . .venv/bin/activate
-        . ./test.sh
+        conda list
+        ./test.sh
