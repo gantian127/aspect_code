@@ -20,7 +20,6 @@ from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.graph import DualVoronoiGraph
 from landlab.plot.graph import plot_graph
 
-
 ## user settings
 num_partitions = 3
 hex_grid_shape = (10, 10)

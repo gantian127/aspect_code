@@ -16,7 +16,6 @@ from landlab.grid import HexModelGrid, VoronoiDelaunayGrid
 from landlab.graph import DualVoronoiGraph
 from landlab.plot import plot_graph
 
-
 # create output dir
 output_dir = os.path.join(os.getcwd(), "experiment", "remove_extra_links_hex_new_test")
 os.makedirs(output_dir, exist_ok=True)

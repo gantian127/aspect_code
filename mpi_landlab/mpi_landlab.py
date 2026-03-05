@@ -42,7 +42,6 @@ from landlab.plot.graph import plot_graph
 from plot_utils import create_pvd
 from landlab_parallel.io import vtu_dump, pvtu_dump
 
-
 # step 0: set up parallel
 from mpi4py import MPI
 from collections import defaultdict

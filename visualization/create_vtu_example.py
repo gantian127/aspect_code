@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-
 # Functions from landlab_parallel io.py ############################################
 import contextlib
 import tempfile

@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.components import SimpleSubmarineDiffuser
 
-
 ## step 0: set up parallel
 from mpi4py import MPI
 from collections import defaultdict
