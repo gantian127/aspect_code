@@ -89,4 +89,4 @@ jobs:
       shell: bash -l {0}
       run: |
         cd mpi_landlab
-        mpiexec -n ${{ matrix.np }} python mpi_landlab_linear_diffusion.py
+        mpiexec --oversubscribe -n ${{ matrix.np }} python mpi_landlab_linear_diffusion.py
