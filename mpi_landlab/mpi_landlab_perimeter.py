@@ -499,9 +499,7 @@ for time_step in time_steps:
     ## step6: send and receive data for ghost nodes
     for pid, nodes_to_send in send_to.items():
         # Convert to sorted list
-        nodes_to_send = sorted(
-            nodes_to_send
-        )
+        nodes_to_send = sorted(nodes_to_send)
         # remember to sort the nodes_to_send to make sure the order is correct.
         # set type has no order
         nodes_to_send_local_id = [
