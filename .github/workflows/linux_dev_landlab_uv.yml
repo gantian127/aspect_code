@@ -1,0 +1,80 @@
+name: test_linear_diffusion_workflow_uv
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.actor }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OMPI_MCA_btl_base_warn_component_unused: 0
+  OMPI_MCA_mpi_yield_when_idle: 1
+  OMPI_MCA_rmaps_base_oversubscribe: 1
+  OMPI_ALLOW_RUN_AS_ROOT: 1
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  OMPI_MCA_btl_vader_single_copy_mechanism: none
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        np: [1, 2, 4, 6, 8]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (OpenMPI + build tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopenmpi-dev openmpi-bin \
+            build-essential gfortran pkg-config
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python & venv (uv)
+        run: |
+          uv venv --python 3.12
+          uv pip install -U pip
+
+      - name: Checkout landlab dev branch
+        uses: actions/checkout@v4
+        with:
+          repository: gantian127/landlab
+          ref: tian/remove-extra-links-voronoi-grid
+          path: landlab
+
+      - name: Install landlab dependencies (uv)
+        run: |
+          uv pip install \
+            bmipy \
+            matplotlib \
+            netcdf4 \
+            "numpy>=1.20" \
+            pandas \
+            "pyshp!=2.3.0" \
+            pyyaml \
+            rich-click \
+            scipy \
+            statsmodels \
+            "xarray>=0.16"
+
+      - name: Install landlab (editable) with uv
+        run: |
+          uv pip install -e landlab
+
+      - name: Install parallel workflow dependencies (uv)
+        run: |
+          uv pip install mpi4py pymetis
+          uv pip install landlab_parallel==0.1.0
+
+      - name: Check mpi4py works
+        run: |
+          uv run python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
+
+      - name: Run Landlab MPI Test (matrix)
+        run: |
+          cd mpi_landlab
+          uv run mpiexec --oversubscribe -n ${{ matrix.np }} python mpi_landlab_linear_diffusion.py
