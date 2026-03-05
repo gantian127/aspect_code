@@ -24,6 +24,10 @@ for each_step in time_steps:
 To run the program:
 mpiexec -np 5 python mpi_landlab.py
 
+Notes:
+    - this is based on the mpi_landlab_old_workflow.py,
+    - adjust the workflow based on the team meeting feedback on 2025.8
+
 """
 
 import os
