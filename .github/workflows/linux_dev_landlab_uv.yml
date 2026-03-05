@@ -1,6 +1,9 @@
 name: test_linear_diffusion_workflow_uv
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.actor }}-${{ github.ref }}
