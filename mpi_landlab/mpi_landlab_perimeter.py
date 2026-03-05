@@ -24,7 +24,10 @@ for each_step in time_steps:
 Notes:
     - this is based on mpi_landlab.py
     - added artificial node code
-    - added perimeter links code
+    - added perimeter links code (old method)
+    - added vis_grid for visualization (this needs to add code to identify
+      perimeter links, otherwise will show zerodivisionerror and links
+      not connected error.)
 
 To run the program:
 mpiexec -np 5 python mpi_landlab.py
