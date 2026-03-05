@@ -2,9 +2,9 @@ name: test_linear_diffusion_workflow
 
 on: [push, pull_request]
 
-concurrency:
-  group: ${{ github.actor }}-${{ github.ref }}
-  cancel-in-progress: true
+#concurrency:
+#  group: ${{ github.actor }}-${{ github.ref }}
+#  cancel-in-progress: true
 
 env:
   OMPI_MCA_btl_base_warn_component_unused: 0
