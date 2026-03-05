@@ -10,6 +10,8 @@ on:
 #  cancel-in-progress: true
 
 env:
+  UV_PROJECT_ENVIRONMENT: .venv
+
   OMPI_MCA_btl_base_warn_component_unused: 0
   OMPI_MCA_mpi_yield_when_idle: 1
   OMPI_MCA_rmaps_base_oversubscribe: 1
@@ -40,7 +42,7 @@ jobs:
       - name: Set up Python & venv (uv)
         run: |
           uv venv --python 3.12
-          uv pip install -U pip
+          .venv/bin/python -c "import sys; print('Using:', sys.executable)"
 
       - name: Checkout landlab dev branch
         uses: actions/checkout@v4
@@ -76,13 +78,14 @@ jobs:
 
       - name: Debug landlab used at runtime
         run: |
-          uv run python -c "import landlab, os, inspect; from landlab import VoronoiDelaunayGrid; print('landlab file:', os.path.dirname(landlab.__file__)); print('VDG init:', inspect.signature(VoronoiDelaunayGrid.__init__))"
+          .venv/bin/python -c "import landlab, os, inspect; from landlab import VoronoiDelaunayGrid; print('landlab file:', os.path.dirname(landlab.__file__)); print('VDG init:', inspect.signature(VoronoiDelaunayGrid.__init__))"
+          .venv/bin/python -m pip show landlab || true
 
       - name: Check mpi4py works
         run: |
-          uv run python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
+          .venv/bin/python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
 
       - name: Run Landlab MPI Test (matrix)
         run: |
           cd mpi_landlab
-          uv run mpiexec --oversubscribe -n ${{ matrix.np }} python mpi_landlab_linear_diffusion.py
+          mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab_linear_diffusion.py
