@@ -49,11 +49,24 @@ jobs:
         ref: tian/remove-extra-links-voronoi-grid
         path: landlab
 
-    - name: Install deps from requirements.in (conda-forge only)
+    - name: Install landlab dependencies
       shell: bash -l {0}
       run: |
-        conda install -y --file=landlab/requirements.in -c nodefaults -c conda-forge --override-channels
-        conda install -y compilers -c nodefaults -c conda-forge --override-channels
+        conda install -y \
+          bmipy \
+          matplotlib \
+          netcdf4 \
+          numpy>=1.20 \
+          pandas \
+          pyshp!=2.3.0 \
+          pyyaml \
+          rich-click \
+          scipy \
+          statsmodels \
+          xarray>=0.16 \
+          compilers \
+          -c nodefaults -c conda-forge --override-channels
+  
 
     - name: Install landlab
       shell: bash -l {0}
@@ -61,10 +74,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e landlab   
 
-    - name: Install additional packages
+    - name: Install parallel workflow dependencies
       shell: bash -l {0}
       run: |
-        conda install -y matplotlib pymetis mpi4py -c nodefaults -c conda-forge --override-channels
+        conda install -y pymetis mpi4py -c nodefaults -c conda-forge --override-channels
         pip install landlab_parallel==0.1.0
 
     - name: Check mpi4py works
