@@ -284,6 +284,29 @@ for rank in range(0, num_partitions):
                             tail_head_nodes_local_ind
                         )
 
+    # remove non perimeter links (link with perimeter nodes) from perimeter links
+    edges = np.asarray(local_boundary_links_tail_head_nodes, dtype=int)
+    adj = {}
+    for a, b in edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+
+    degrees = {
+        n: len(neighbors) for n, neighbors in adj.items()
+    }  # each node had only two links
+    bad_nodes = {n: d for n, d in degrees.items() if d != 2}
+
+    bad_links = [
+        link
+        for link in local_boundary_links_tail_head_nodes
+        if all(
+            v in set(bad_nodes.keys()) for v in link
+        )  # head and tail nodes in bad_nodes
+    ]
+
+    for bad in bad_links:
+        local_boundary_links_tail_head_nodes.remove(bad)
+
     # create voronoi graph with perimeter links
     vor_graph = DualVoronoiGraph(
         (y, x), sort=True, perimeter_links=local_boundary_links_tail_head_nodes
@@ -294,7 +317,7 @@ for rank in range(0, num_partitions):
             vor_graph,
             at=option,
             axes=ax,
-            with_id=True,
+            with_id=False,
             # fontsize=7
         )
         ax.set_title(f"vor_graph_{option}_{rank}")
@@ -316,7 +339,7 @@ for rank in range(0, num_partitions):
             local_vmg_adj,
             at=option,
             axes=ax,
-            with_id=True,
+            with_id=False,
             # fontsize=7
         )
         fig.savefig(os.path.join(output_dir, f"vor_grid_adj_{option}_{rank}.png"))
