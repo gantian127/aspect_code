@@ -1,0 +1,95 @@
+name: test_linear_diffusion_workflow
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+#concurrency:
+#  group: ${{ github.actor }}-${{ github.ref }}
+#  cancel-in-progress: true
+
+env:
+  OMPI_MCA_btl_base_warn_component_unused: 0
+  OMPI_MCA_mpi_yield_when_idle: 1
+  OMPI_MCA_rmaps_base_oversubscribe: 1
+  OMPI_ALLOW_RUN_AS_ROOT: 1
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  OMPI_MCA_btl_vader_single_copy_mechanism: none
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Define the number of processors you want to test here
+        np: [1, 2, 4, 6, 8]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies (OpenMPI)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopenmpi-dev openmpi-bin
+
+
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: 3.12
+        activate-environment: test-env
+        auto-activate-base: false
+        channels: conda-forge
+        channel-priority: strict
+
+    - name: Checkout landlab dev branch
+      uses: actions/checkout@v4
+      with:
+        repository: gantian127/landlab
+        ref: tian/remove-extra-links-voronoi-grid
+        path: landlab
+
+    - name: Install landlab dependencies
+      shell: bash -l {0}
+      run: |
+        conda install -y \
+          bmipy \
+          matplotlib \
+          netcdf4 \
+          numpy>=1.20 \
+          pandas \
+          pyshp!=2.3.0 \
+          pyyaml \
+          rich-click \
+          scipy \
+          statsmodels \
+          xarray>=0.16 \
+          compilers \
+          -c nodefaults -c conda-forge --override-channels
+  
+
+    - name: Install landlab
+      shell: bash -l {0}
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e landlab   
+
+    - name: Install parallel workflow dependencies
+      shell: bash -l {0}
+      run: |
+        conda install -y pymetis mpi4py -c nodefaults -c conda-forge --override-channels
+        pip install landlab_parallel==0.1.0
+
+    - name: Check mpi4py works
+      shell: bash -l {0}
+      run: |
+        python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
+
+    - name: Run Landlab MPI Test
+      shell: bash -l {0}
+      run: |
+        cd mpi_landlab
+        mpiexec --oversubscribe -n ${{ matrix.np }} python mpi_landlab_simple_function.py
