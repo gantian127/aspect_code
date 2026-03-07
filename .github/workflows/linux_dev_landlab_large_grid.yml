@@ -1,4 +1,4 @@
-name: test_linear_diffusion_workflow
+name: test_large_grid_workflow
 
 on:
   push:
