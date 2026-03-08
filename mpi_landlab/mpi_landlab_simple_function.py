@@ -63,7 +63,7 @@ if rank == 0:
 
     ## step 1: define hex model grid and assign z values
     # grid info
-    grid_shape = [100, 100]
+    grid_shape = [1000, 1000]
     spacing = 10
     print(f"global grid shape: {grid_shape}, spacing: {spacing}m")
 
