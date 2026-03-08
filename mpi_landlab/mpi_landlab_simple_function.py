@@ -56,14 +56,14 @@ size = comm.Get_size()
 
 # make sure number of partitions matches the MPI processes
 num_partitions = size
-
+debug_plot = False
 
 if rank == 0:
     print(f"number of partitions: {num_partitions}")
 
     ## step 1: define hex model grid and assign z values
     # grid info
-    grid_shape = [1000, 1000]
+    grid_shape = [100, 100]
     spacing = 10
     print(f"global grid shape: {grid_shape}, spacing: {spacing}m")
 
@@ -126,30 +126,31 @@ if rank == 0:
     # Convert partition labels to a NumPy array
     partition_array = np.array(part_labels)
 
-    # # visualization of partition results
-    # fig, ax = plt.subplots(figsize=[20, 16])
-    # ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
-    # ax.set_title("grid partition based on nodes")
-    # for node_id in mg.nodes.flat:
-    #     ax.annotate(
-    #         f"{node_id}/{partition_array[node_id]}",
-    #         (mg.node_x[node_id], mg.node_y[node_id]),
-    #         color="black",
-    #         fontsize=8,
-    #         ha="center",
-    #         va="top",
-    #     )
-    # for node_id in mg.nodes.flat:
-    #     ax.annotate(
-    #         f"{mg.at_node['topographic__elevation'][node_id]}",
-    #         (mg.node_x[node_id], mg.node_y[node_id]),
-    #         color="red",
-    #         fontsize=8,
-    #         ha="center",
-    #         va="bottom",
-    #     )
-    # fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
-    # plt.close(fig)
+    if debug_plot:
+        # visualization of partition results
+        fig, ax = plt.subplots(figsize=[20, 16])
+        ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
+        ax.set_title("grid partition based on nodes")
+        for node_id in mg.nodes.flat:
+            ax.annotate(
+                f"{node_id}/{partition_array[node_id]}",
+                (mg.node_x[node_id], mg.node_y[node_id]),
+                color="black",
+                fontsize=8,
+                ha="center",
+                va="top",
+            )
+        for node_id in mg.nodes.flat:
+            ax.annotate(
+                f"{mg.at_node['topographic__elevation'][node_id]}",
+                (mg.node_x[node_id], mg.node_y[node_id]),
+                color="red",
+                fontsize=8,
+                ha="center",
+                va="bottom",
+            )
+        fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
+        plt.close(fig)
 
     print(f"grid partition finished at rank {rank}")
 
@@ -181,7 +182,9 @@ if rank == 0:
         global2local = {g: i for i, g in enumerate(vmg_global_ind)}
         local_nodes_ind = [global2local[val] for val in sorted(local_nodes)]
         local_ghost_nodes_ind = [global2local[val] for val in sorted(ghost_nodes)]
-        local_boundary_nodes_ind = [global2local[val] for val in local_nodes if val in boundary_nodes]
+        local_boundary_nodes_ind = [
+            global2local[val] for val in local_nodes if val in boundary_nodes
+        ]
 
         # get x, y and elevation data
         x = mg.node_x[vmg_global_ind]
@@ -211,7 +214,7 @@ if rank == 0:
                     local_nodes_ind,
                     local_ghost_nodes_ind,
                     global2local,
-                    local_boundary_nodes_ind
+                    local_boundary_nodes_ind,
                 ),
                 dest=rank,
                 tag=0,
@@ -229,7 +232,7 @@ else:
         local_nodes_ind,
         local_ghost_nodes_ind,
         global2local,
-        local_boundary_nodes_ind
+        local_boundary_nodes_ind,
     ) = comm.recv(source=0, tag=0)
 
     send_to, recv_from = comm.recv(source=0, tag=1)
@@ -261,55 +264,56 @@ local_z = local_vmg.add_field("topographic__elevation", elev, at="node")
 local_qs = local_vmg.add_zeros("sediment_flux", at="link")
 local_vmg.status_at_node[perimeter_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
 
-# # plot subgrid for each rank
-# fig, ax = plt.subplots(figsize=[18, 14])
-# sc = ax.scatter(
-#     local_vmg.node_x,
-#     local_vmg.node_y,
-#     c=local_vmg.at_node["topographic__elevation"],
-#     vmin=-3,
-# )
-# ax.set_title(f"subgrid nodes rank={rank}")
-#
-# for node_id in local_vmg.boundary_nodes:
-#     ax.annotate(
-#         "B",
-#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-#         color="blue",
-#         fontsize=10,
-#         ha="left",
-#         va="bottom",
-#     )
-# for node_id in local_ghost_nodes_ind:
-#     ax.annotate(
-#         "G",
-#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-#         color="red",
-#         fontsize=10,
-#         ha="right",
-#         va="bottom",
-#     )
-# for node_id in range(0, local_vmg.number_of_nodes):
-#     ax.annotate(
-#         f"{vmg_global_ind[node_id]}/{rank}",
-#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-#         color="black",
-#         fontsize=8,
-#         ha="center",
-#         va="top",
-#     )
-# cbar = fig.colorbar(sc, ax=ax)
-# cbar.set_label("Elevation (m)")
-# fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
-# plt.close(fig)
+if debug_plot:
+    # plot subgrid for each rank
+    fig, ax = plt.subplots(figsize=[18, 14])
+    sc = ax.scatter(
+        local_vmg.node_x,
+        local_vmg.node_y,
+        c=local_vmg.at_node["topographic__elevation"],
+        vmin=-3,
+    )
+    ax.set_title(f"subgrid nodes rank={rank}")
 
-# # plot subgrid of link, cell, node
-# for option in ["link", "node", "cell"]:
-#     fig, ax = plt.subplots(figsize=(16, 16))
-#     plot_graph(local_vmg, at=option, axes=ax)
-#     ax.set_title(f"{option} graph for rank={rank}")
-#     fig.savefig(os.path.join(output_dir, f"{option}_subgrid_{rank}.png"))
-#     plt.close(fig)
+    for node_id in local_vmg.boundary_nodes:
+        ax.annotate(
+            "B",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="blue",
+            fontsize=10,
+            ha="left",
+            va="bottom",
+        )
+    for node_id in local_ghost_nodes_ind:
+        ax.annotate(
+            "G",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="red",
+            fontsize=10,
+            ha="right",
+            va="bottom",
+        )
+    for node_id in range(0, local_vmg.number_of_nodes):
+        ax.annotate(
+            f"{vmg_global_ind[node_id]}/{rank}",
+            (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+            color="black",
+            fontsize=8,
+            ha="center",
+            va="top",
+        )
+    cbar = fig.colorbar(sc, ax=ax)
+    cbar.set_label("Elevation (m)")
+    fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
+    plt.close(fig)
+
+    # plot subgrid of link, cell, node
+    for option in ["link", "node", "cell"]:
+        fig, ax = plt.subplots(figsize=(16, 16))
+        plot_graph(local_vmg, at=option, axes=ax)
+        ax.set_title(f"{option} graph for rank={rank}")
+        fig.savefig(os.path.join(output_dir, f"{option}_subgrid_{rank}.png"))
+        plt.close(fig)
 
 
 ## step 5: run simulation
@@ -322,45 +326,28 @@ dt = model_parameters["dt"]
 
 for time_step in time_steps:
     # run onestep
-    # method 1: consider nodes
-    # alpha = 0.1
-    # z_old = local_z.copy()
-    # z_new = local_z.copy()
-    #
-    # owned_updatable = np.setdiff1d(local_nodes_ind, local_boundary_nodes_ind)
-    #
-    # for n in owned_updatable:
-    #     nbrs = [k for k in local_vmg.adjacent_nodes_at_node[n] if k != -1]
-    #     mean_nbr = np.mean(z_old[nbrs])
-    #     z_new[n] = z_old[n] + alpha * (mean_nbr - z_old[n])
-    #
-    # local_z[:] = z_new
-
-    # method 2: consider links
-    alpha = 1
+    alpha_mean = 0.01
+    alpha_flux = 0.02
     z_old = local_z.copy()
     z_new = local_z.copy()
 
     owned_updatable = np.setdiff1d(local_nodes_ind, local_boundary_nodes_ind)
+    g = local_vmg.calc_grad_at_link(local_z)
+    local_qs[local_vmg.active_links] = -D * g[local_vmg.active_links]
 
     for n in owned_updatable:
-        net_flux = 0.0
+        nbrs = [k for k in local_vmg.adjacent_nodes_at_node[n] if k != -1]
+        mean_nbr = np.mean(z_old[nbrs])
 
+        flux_mag = 0.0
         for lk in local_vmg.links_at_node[n]:
             if lk == -1:
                 continue
+            flux_mag += abs(local_qs[lk])
 
-            tail = local_vmg.node_at_link_tail[lk]
-            head = local_vmg.node_at_link_head[lk]
-
-            # qs > 0 means flux tail -> head
-            if head == n:
-                net_flux += local_qs[lk]  # flux enters node
-            elif tail == n:
-                net_flux -= local_qs[lk]  # flux leaves node
-
-        # simple update, no area scaling yet
-        z_new[n] = z_old[n] - alpha * net_flux
+        z_new[n] = (
+            z_old[n] + alpha_mean * abs((mean_nbr - z_old[n])) + alpha_flux * flux_mag
+        )
 
     local_z[:] = z_new
 
