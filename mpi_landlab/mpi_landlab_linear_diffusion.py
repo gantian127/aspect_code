@@ -14,9 +14,9 @@ if rank =0,
     step3: send each partition information used for the local grid
 step4: define local grid as Voronoi ModelGrid (this could be in a finer resolution
         if needed)
-step5: define SimpleSubmarineDiffuser model with local grid
+step5: run model
 for each_step in time_steps:
-    run SimpleSubmarineDiffuser model at one step
+    run linear diffusion model at one step
     step6: send and receive elevation data for ghost nodes, update ghost nodes values
            in local grid
     step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
@@ -47,6 +47,8 @@ from landlab_parallel.io import vtu_dump, pvtu_dump
 from plot_utils import create_pvd
 from grid_utils import get_perimeter_nodes_and_links
 
+import time
+
 warnings.simplefilter("always")
 
 ## step 0: set up parallel
@@ -63,12 +65,12 @@ if rank == 0:
 
     ## step 1: define hex model grid and assign z values
     # grid info
-    grid_shape = [25, 40]
+    grid_shape = [170, 170]
     spacing = 10
     print(f"global grid shape: {grid_shape}, spacing: {spacing}m")
 
     # model parameter info
-    time_steps = list(range(0, 100))
+    time_steps = list(range(0, 5000))
     D = 0.01  # m2/yr
     dt = 0.2 * spacing * spacing / D  # courant condition for stability of diffusion
 
@@ -92,14 +94,19 @@ if rank == 0:
     os.makedirs(output_pvtu, exist_ok=True)
 
     # define global grid
+    start = time.perf_counter()
     mg = HexModelGrid(grid_shape, spacing=spacing, node_layout="rect")
     z = mg.add_zeros("topographic__elevation", at="node")
+    end = time.perf_counter()
+    print(f"gloabal grid time: {end - start:.4f} seconds")
 
     fault_trace_y = 50.0 + 0.25 * mg.x_of_node
     z[mg.y_of_node > fault_trace_y] += (
         10.0 + 0.01 * mg.x_of_node[mg.y_of_node > fault_trace_y]
     )
     print(f"initial elevation sum: {sum(z)} ")
+
+    np.save(os.path.join(output_dir, "elevation_init.npy"), z)
 
     qs = mg.add_zeros("sediment_flux", at="link")
 
@@ -112,46 +119,70 @@ if rank == 0:
     plt.savefig(os.path.join(output_dir, "dem_hex.png"))
     plt.close()
 
+    # # testing:
+    # g = 20#260881
+    # print("serial neighbors:",
+    #       [n for n in mg.adjacent_nodes_at_node[g] if n != -1])
+    # print(f"global status for {g}:", mg.status_at_node[g])
+    # serial_links = [int(k) for k in mg.links_at_node[g] if k != -1]
+    # serial_active = [k for k in serial_links if k in set(mg.active_links)]
+    # print("serial links:", serial_links)
+    # print("serial active:", serial_active)
+    # print("serial area:", mg.cell_area_at_node[g])
+    # print("serial neighbors area:", [mg.cell_area_at_node[n] for n in mg.adjacent_nodes_at_node[g] if n != -1])
+    #
+    # serial_cells = np.where(mg.node_at_cell == g)[0]
+    # print("serial cell(s):", serial_cells)
+    # if len(serial_cells) > 0:
+    #     print("serial area_of_cell:", mg.area_of_cell[serial_cells[0]])
+    #
+    # c = serial_cells[0]
+    # print("serial faces:", mg.faces_at_cell[serial_cells[0]])
+    # print("serial face links:", mg.link_at_face[mg.faces_at_cell[serial_cells[0]]])
+
     ## step2: grid partition
     adjacency_list = []
-
+    start = time.perf_counter()
     # create adjacency list for corners
     for node_id in mg.nodes.flat:
         adjacent_nodes = [n for n in mg.adjacent_nodes_at_node[node_id] if n != -1]
         adjacency_list.append(np.array(adjacent_nodes))
+    end = time.perf_counter()
+    print(f"grid partitioning time: {end - start:.4f} seconds")
 
     # Partition the grid using pymetis
     n_cuts, part_labels = pymetis.part_graph(num_partitions, adjacency=adjacency_list)
 
     # Convert partition labels to a NumPy array
     partition_array = np.array(part_labels)
+    np.save(os.path.join(output_dir, "partition_array.npy"), partition_array)
 
     # visualization of partition results
-    fig, ax = plt.subplots(figsize=[20, 16])
-    ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
-    ax.set_title("grid partition based on nodes")
-    for node_id in mg.nodes.flat:
-        ax.annotate(
-            f"{node_id}/{partition_array[node_id]}",
-            (mg.node_x[node_id], mg.node_y[node_id]),
-            color="black",
-            fontsize=8,
-            ha="center",
-            va="top",
-        )
-    for node_id in mg.nodes.flat:
-        ax.annotate(
-            f"{mg.at_node['topographic__elevation'][node_id]}",
-            (mg.node_x[node_id], mg.node_y[node_id]),
-            color="red",
-            fontsize=8,
-            ha="center",
-            va="bottom",
-        )
-    fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
-    plt.close(fig)
-
-    print(f"grid partition finished at rank {rank}")
+    # fig, ax = plt.subplots(figsize=[20, 16])
+    # ax.scatter(mg.node_x, mg.node_y, c=partition_array, cmap="viridis")
+    # ax.set_title("grid partition based on nodes")
+    # for node_id in mg.nodes.flat:
+    #     ax.annotate(
+    #         f"{node_id}/{partition_array[node_id]}",
+    #         (mg.node_x[node_id], mg.node_y[node_id]),
+    #         color="black",
+    #         fontsize=8,
+    #         ha="center",
+    #         va="top",
+    #     )
+    # for node_id in mg.nodes.flat:
+    #     ax.annotate(
+    #         f"{mg.at_node['topographic__elevation'][node_id]}",
+    #         (mg.node_x[node_id], mg.node_y[node_id]),
+    #         color="red",
+    #         fontsize=8,
+    #         ha="center",
+    #         va="bottom",
+    #     )
+    # fig.savefig(os.path.join(output_dir, "global_grid_partition.png"))
+    # plt.close(fig)
+    #
+    # print(f"grid partition finished at rank {rank}")
 
     ## step3 send partition grid info to each process
     for rank in range(size - 1, -1, -1):
@@ -181,7 +212,9 @@ if rank == 0:
         global2local = {g: i for i, g in enumerate(vmg_global_ind)}
         local_nodes_ind = [global2local[val] for val in sorted(local_nodes)]
         local_ghost_nodes_ind = [global2local[val] for val in sorted(ghost_nodes)]
-        local_boundary_nodes = [val for val in local_nodes if val in boundary_nodes]
+        local_boundary_nodes_ind = [
+            global2local[val] for val in local_nodes if val in boundary_nodes
+        ]
 
         # get x, y and elevation data
         x = mg.node_x[vmg_global_ind]
@@ -210,6 +243,7 @@ if rank == 0:
                     perimeter_nodes_ind,
                     local_nodes_ind,
                     local_ghost_nodes_ind,
+                    local_boundary_nodes_ind,
                     global2local,
                 ),
                 dest=rank,
@@ -227,6 +261,7 @@ else:
         perimeter_nodes_ind,
         local_nodes_ind,
         local_ghost_nodes_ind,
+        local_boundary_nodes_ind,
         global2local,
     ) = comm.recv(source=0, tag=0)
 
@@ -244,6 +279,7 @@ model_parameters = comm.bcast(model_parameters, root=0)
 ## step4: define local model grid
 print(f"define local grid for rank {rank}")
 
+start = time.perf_counter()
 with warnings.catch_warnings(record=True) as w:
     local_vmg = VoronoiDelaunayGrid(
         x.tolist(), y.tolist(), perimeter_links=perimeter_links_ind
@@ -257,57 +293,114 @@ with warnings.catch_warnings(record=True) as w:
 
 local_z = local_vmg.add_field("topographic__elevation", elev, at="node")
 local_qs = local_vmg.add_zeros("sediment_flux", at="link")
-local_vmg.status_at_node[perimeter_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
+local_vmg.status_at_node[local_boundary_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
 
-# plot subgrid for each rank
-fig, ax = plt.subplots(figsize=[18, 14])
-sc = ax.scatter(
-    local_vmg.node_x,
-    local_vmg.node_y,
-    c=local_vmg.at_node["topographic__elevation"],
-    vmin=-3,
-)
-ax.set_title(f"subgrid nodes rank={rank}")
+end = time.perf_counter()
+print(f"local grid creation time for rank {rank}: {end - start:.4f} seconds")
 
-for node_id in local_vmg.boundary_nodes:
-    ax.annotate(
-        "B",
-        (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-        color="blue",
-        fontsize=10,
-        ha="left",
-        va="bottom",
-    )
-for node_id in local_ghost_nodes_ind:
-    ax.annotate(
-        "G",
-        (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-        color="red",
-        fontsize=10,
-        ha="right",
-        va="bottom",
-    )
-for node_id in range(0, local_vmg.number_of_nodes):
-    ax.annotate(
-        f"{vmg_global_ind[node_id]}/{rank}",
-        (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-        color="black",
-        fontsize=8,
-        ha="center",
-        va="top",
-    )
-cbar = fig.colorbar(sc, ax=ax)
-cbar.set_label("Elevation (m)")
-fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
-plt.close(fig)
+# print(f"rank {rank} ghost_nodes:{len(local_ghost_nodes_ind)}")
+# print(f"rank {rank} perimeter_nodes: {len(perimeter_nodes_ind)}")
+# print(f"rank {rank} perimeter_links:{len(perimeter_links_ind)}")
+# print(f"rank {rank} local_boundary_nodes_ind: {len(local_boundary_nodes_ind)}")
+# print(f"rank {rank} local_nodes: {len(local_nodes_ind)}")
+# print(f"rank {rank} local_vmg: {local_vmg.number_of_nodes}")
 
-# plot subgrid of link, cell, node
-for option in ["link", "node", "cell"]:
-    fig, ax = plt.subplots(figsize=(16, 16))
-    plot_graph(local_vmg, at=option, axes=ax)
-    ax.set_title(f"{option} graph for rank={rank}")
-    fig.savefig(os.path.join(output_dir, f"{option}_subgrid_{rank}.png"))
-    plt.close(fig)
+# max_diff_global = 260881
+# if max_diff_global in list(global2local.keys()):
+#     print(f"max diff node in rank {rank}")
+# max_diff_local = global2local[max_diff_global]
+# if max_diff_local in perimeter_nodes_ind:
+#     print(f"max diff node in perimeter_nodes_ind")
+# else:
+#     print(f"max diff node not a perimeter node")
+#
+# print("parallel neighbors:",
+#       [vmg_global_ind[n]
+#        for n in local_vmg.adjacent_nodes_at_node[max_diff_local]
+#        if n != -1])
+#
+# print("status:", local_vmg.status_at_node[max_diff_local])
+# print("is core:", max_diff_local  in set(local_vmg.core_nodes))
+# print("is boundary:", max_diff_local  in set(local_vmg.boundary_nodes))
+# print("is perimeter:", max_diff_local  in set(perimeter_nodes_ind))
+# print("is ghost:", max_diff_local  in set(local_ghost_nodes_ind))
+
+# l = max_diff_local
+# parallel_links = [int(k) for k in local_vmg.links_at_node[l] if k != -1]
+# parallel_active = [k for k in parallel_links if k in set(local_vmg.active_links)]
+# print("parallel links:", parallel_links)
+# print("parallel active:", parallel_active)
+#
+# parallel_cells = np.where(local_vmg.node_at_cell == l)[0]
+# print("parallel cell(s):", parallel_cells)
+# if len(parallel_cells) > 0:
+#     c = parallel_cells[0]
+#     print("local_vmg.area_of_cell:", local_vmg.area_of_cell[c])
+# else:
+#     print("this local node is not in node_at_cell")
+#
+# c = parallel_cells[0]
+# print("parallel faces:", local_vmg.faces_at_cell[parallel_cells[0]])
+# print("parallel face links:",
+#       local_vmg.link_at_face[local_vmg.faces_at_cell[parallel_cells[0]]])
+#
+# print("parallel qs on cell faces:",
+#       local_qs[local_vmg.link_at_face[local_vmg.faces_at_cell[c]]])
+#
+# valid_faces = local_vmg.faces_at_cell[c]
+# valid_faces = valid_faces[valid_faces != -1]
+# print("valid faces:", valid_faces)
+# print("valid face links:", local_vmg.link_at_face[valid_faces])
+
+# # plot subgrid for each rank
+# fig, ax = plt.subplots(figsize=[18, 14])
+# sc = ax.scatter(
+#     local_vmg.node_x,
+#     local_vmg.node_y,
+#     c=local_vmg.at_node["topographic__elevation"],
+#     vmin=-3,
+# )
+# ax.set_title(f"subgrid nodes rank={rank}")
+#
+# for node_id in local_vmg.boundary_nodes:
+#     ax.annotate(
+#         "B",
+#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+#         color="blue",
+#         fontsize=10,
+#         ha="left",
+#         va="bottom",
+#     )
+# for node_id in local_ghost_nodes_ind:
+#     ax.annotate(
+#         "G",
+#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+#         color="red",
+#         fontsize=10,
+#         ha="right",
+#         va="bottom",
+#     )
+# for node_id in range(0, local_vmg.number_of_nodes):
+#     ax.annotate(
+#         f"{vmg_global_ind[node_id]}/{rank}",
+#         (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+#         color="black",
+#         fontsize=8,
+#         ha="center",
+#         va="top",
+#     )
+# cbar = fig.colorbar(sc, ax=ax)
+# cbar.set_label("Elevation (m)")
+# fig.savefig(os.path.join(output_dir, f"subgrid_for_rank{rank}.png"))
+# plt.close(fig)
+#
+# # plot subgrid of link, cell, node
+# for option in ["link", "node", "cell"]:
+#     fig, ax = plt.subplots(figsize=(16, 16))
+#     plot_graph(local_vmg, at=option, axes=ax)
+#     ax.set_title(f"{option} graph for rank={rank}")
+#     fig.savefig(os.path.join(output_dir, f"{option}_subgrid_{rank}.png"))
+#     plt.close(fig)
 
 
 ## step 5: run simulation
@@ -323,7 +416,35 @@ for time_step in time_steps:
     g = local_vmg.calc_grad_at_link(local_z)
     local_qs[local_vmg.active_links] = -D * g[local_vmg.active_links]
     dzdt = -local_vmg.calc_flux_div_at_node(local_qs)
+
+    # target_global = 260881
+    # if target_global in global2local:
+    #     target_local = global2local[target_global]
+    #
+    #     print(f"\nrank {rank} target global {target_global} -> local {target_local}")
+    #     print("z before update:", local_z[target_local])
+    #     print("dzdt:", dzdt[target_local])
+    #
+    #     nbr_local = [n for n in local_vmg.adjacent_nodes_at_node[target_local] if
+    #                  n != -1]
+    #     nbr_global = [vmg_global_ind[n] for n in nbr_local]
+    #     print("neighbors (global):", nbr_global)
+    #
+    #     print("links at node:")
+    #     for lk in local_vmg.links_at_node[target_local]:
+    #         if lk != -1:
+    #             print(
+    #                 "  link", int(lk),
+    #                 "grad =", g[lk],
+    #                 "qs =", local_qs[lk],
+    #                 "active =", int(lk) in set(local_vmg.active_links),
+    #             )
+
     local_z[local_vmg.core_nodes] += dzdt[local_vmg.core_nodes] * dt
+
+    # if target_global in global2local:
+    #     target_local = global2local[target_global]
+    #     print("z after update:", local_z[target_local])
 
     # step 6: send and receive data for ghost nodes (new methods)
     # make sure all ranks have finished the model run before communication
