@@ -4,8 +4,9 @@ number of processes
 """
 
 import os
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from landlab import HexModelGrid
 
 compare_np = 5

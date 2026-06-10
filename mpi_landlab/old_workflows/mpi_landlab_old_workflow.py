@@ -14,19 +14,18 @@ mpiexec -np 5 python mpi_landlab3.py
 """
 
 import os
-import numpy as np
-import pymetis
+from collections import defaultdict
 
 # import matplotlib
 # matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pymetis
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.components import SimpleSubmarineDiffuser
 
 ## step 0: set up parallel
 from mpi4py import MPI
-from collections import defaultdict
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -34,9 +33,9 @@ size = comm.Get_size()
 
 # Ensure number of partitions matches the MPI processes
 num_partitions = size
-assert (
-    size == num_partitions
-), "Number of MPI processes must match the number of partitions!"
+assert size == num_partitions, (
+    "Number of MPI processes must match the number of partitions!"
+)
 
 if rank == 0:
     output_dir = os.path.join(os.getcwd(), "output")

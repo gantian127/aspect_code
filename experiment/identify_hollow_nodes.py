@@ -5,13 +5,11 @@ send their node value of the grid.
 """
 
 import os
-import numpy as np
-import pymetis
-
-import matplotlib.pyplot as plt
-
 from collections import defaultdict
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pymetis
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 
 # create output dir for global grid
@@ -69,7 +67,6 @@ plt.close(fig)
 results_recv = {}
 
 for rank in range(0, num_partitions):
-
     # local nodes for each rank
     local_nodes = [node for node, part in enumerate(part_labels) if part == rank]
 

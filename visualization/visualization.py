@@ -10,11 +10,13 @@ landlab legacy_vtk
 https://landlab.readthedocs.io/en/latest/generated/api/landlab.io.legacy_vtk.html
 """
 
-from visualization.io import vtu_dump, pvtu_dump, create_pvd
-from landlab import VoronoiDelaunayGrid
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+from landlab import VoronoiDelaunayGrid
+
+from visualization.io import create_pvd, pvtu_dump, vtu_dump
 
 # output dir
 output_dir = os.path.join(os.getcwd(), "visualization/pvtu_vtu")

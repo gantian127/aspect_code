@@ -7,15 +7,13 @@ identify the tail and head nodes of each perimeter links of subgrid,
 pass these nodes list to voronoi graph as perimeter_link
 """
 
-import os
 import json
-import numpy as np
-import pymetis
-
-import matplotlib.pyplot as plt
-
+import os
 from collections import defaultdict
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pymetis
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.graph import DualVoronoiGraph
 from landlab.plot.graph import plot_graph

@@ -11,9 +11,8 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-from landlab.grid import HexModelGrid, VoronoiDelaunayGrid
 from landlab.graph import DualVoronoiGraph
+from landlab.grid import HexModelGrid, VoronoiDelaunayGrid
 from landlab.plot import plot_graph
 
 # create output dir

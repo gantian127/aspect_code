@@ -13,13 +13,13 @@ Key findings:
 - for overlap links: link 0 [0,1], link1 [0,2], link2 [1,2]
 """
 
-import numpy as np
 import os
-import matplotlib.pyplot as plt
 
-from landlab.plot import plot_graph
+import matplotlib.pyplot as plt
+import numpy as np
 from landlab import HexModelGrid
 from landlab.graph import DualVoronoiGraph
+from landlab.plot import plot_graph
 
 # create output dir
 output_dir = os.path.join(os.getcwd(), "experiment", "debug_links_error")

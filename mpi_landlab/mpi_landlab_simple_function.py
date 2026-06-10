@@ -32,20 +32,18 @@ mpiexec -np 5 python mpi_landlab.py
 """
 
 import os
-import numpy as np
-from collections import defaultdict
 import warnings
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
-from mpi4py import MPI
+import numpy as np
 import pymetis
-
+from grid_utils import get_perimeter_nodes_and_links
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.plot.graph import plot_graph
-from landlab_parallel.io import vtu_dump, pvtu_dump
-
+from landlab_parallel.io import pvtu_dump, vtu_dump
+from mpi4py import MPI
 from plot_utils import create_pvd
-from grid_utils import get_perimeter_nodes_and_links
 
 warnings.simplefilter("always")
 

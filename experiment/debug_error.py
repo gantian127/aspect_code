@@ -3,9 +3,10 @@ This is to test the local model grid creation for the zero division error
 """
 
 import os
+
+import matplotlib.pyplot as plt
 from landlab import VoronoiDelaunayGrid
 from landlab.plot.graph import plot_graph
-import matplotlib.pyplot as plt
 
 # create output dir
 output_dir = os.path.join(os.getcwd(), "experiment", "debug_error")

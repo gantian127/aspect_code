@@ -8,19 +8,18 @@ landlab legacy_vtk
 https://landlab.readthedocs.io/en/latest/generated/api/landlab.io.legacy_vtk.html
 """
 
-from landlab import VoronoiDelaunayGrid
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-
 # Functions from landlab_parallel io.py ############################################
 import contextlib
+import os
 import tempfile
 from collections.abc import Sequence
 from xml.dom import minidom
 
 import landlab
+import matplotlib.pyplot as plt
 import meshio
+import numpy as np
+from landlab import VoronoiDelaunayGrid
 
 
 def convert_grid_to_mesh(

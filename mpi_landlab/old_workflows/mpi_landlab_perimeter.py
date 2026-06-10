@@ -35,20 +35,19 @@ mpiexec -np 5 python mpi_landlab.py
 """
 
 import os
-import numpy as np
-import pymetis
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pymetis
 from landlab import HexModelGrid, VoronoiDelaunayGrid
 from landlab.components import SimpleSubmarineDiffuser
 from landlab.plot.graph import plot_graph
-from plot_utils import create_pvd
-from landlab_parallel.io import vtu_dump, pvtu_dump
+from landlab_parallel.io import pvtu_dump, vtu_dump
 
 ## step 0: set up parallel
 from mpi4py import MPI
-from collections import defaultdict
+from plot_utils import create_pvd
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -486,7 +485,6 @@ if rank == 0:
     print("start model loops")
 
 for time_step in time_steps:
-
     # run one step
     ssd.run_one_step(0.2)
 

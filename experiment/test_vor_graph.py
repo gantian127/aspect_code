@@ -3,10 +3,10 @@ This is to test if passing perimeter link info could create a valid voronoi grap
 without extra links or cells
 """
 
-import os
 import json
-import matplotlib.pyplot as plt
+import os
 
+import matplotlib.pyplot as plt
 from landlab.graph import DualVoronoiGraph
 from landlab.plot.graph import plot_graph
 

@@ -11,10 +11,9 @@ https://landlab.readthedocs.io/en/latest/user_guide/grid.html
 @Tian Mar 20, 2025
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pymetis
-
-import matplotlib.pyplot as plt
 from landlab import RasterModelGrid
 
 # Create a RasterModelGrid

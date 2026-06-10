@@ -11,7 +11,6 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from landlab import HexModelGrid
 from landlab.components import SimpleSubmarineDiffuser
 
