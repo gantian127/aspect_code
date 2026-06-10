@@ -56,3 +56,14 @@ def get_perimeter_nodes_and_links(points):
             edges.append((i, j))
 
     return np.array(sorted(bset), dtype=int), edges
+
+
+class Uplift:
+    def __init__(self, grid):
+        self.grid = grid
+
+    def run_one_step(self, dt):
+        z = self.grid.at_node["topographic__elevation"]
+        dz_dt = self.grid.at_node["uplift_rate"]
+
+        z[self.grid.core_nodes] += dz_dt[self.grid.core_nodes] * dt
