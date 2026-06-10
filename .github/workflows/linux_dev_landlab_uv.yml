@@ -1,4 +1,4 @@
-name: test_linear_diffusion_workflow_uv
+name: test_dev_landlab_uv
 
 on:
   push:
