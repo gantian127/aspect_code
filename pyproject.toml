@@ -12,3 +12,17 @@ dependencies = [
     "meshio>=5.3.5",
     "landlab_parallel==0.1.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "nox",
+    "pre-commit",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
