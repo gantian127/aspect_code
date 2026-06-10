@@ -12,38 +12,41 @@ if rank =0,
 step4: define local grid as Voronoi ModelGrid (this could be in a finer resolution
         if needed)
 step5:
+initiate model components (uplift, lineardiffuser)
+calculate dt to fit for all local grids
+
 for each_step in time_steps:
-    run linear diffuser-> stream power eroder->flow accumulator to
-    update elevation at one step
-    step6: send and receive elevation data for ghost nodes, update ghost nodes values
-           in local grid
+    for component, args in components:
+        component.run_one_ste(*args)
+        step6: send and receive elevation data for ghost nodes, update ghost nodes values
+               in local grid
     step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
 
 Notes:
-    - this is based on mpi_landlab_simple_function.py
-    - this is aimed to test with the voronoi grid for the full LEM workflow.
+    - this is based on mpi_landlab_simple_function.py and eric's example workflow
+    - this is aimed to test with the voronoi grid for the uplift and linear
+      diffuser component
 
 
 To run the program:
-mpiexec -np 5 python [mpi_landlab_script_name.py]
+mpiexec --oversubscribe -np 5 python [mpi_landlab_script_name.py]
 
 """
 
 import os
-import numpy as np
-from collections import defaultdict
 import warnings
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
-from mpi4py import MPI
+import numpy as np
 import pymetis
-
+from grid_utils import Uplift, get_perimeter_nodes_and_links
 from landlab import HexModelGrid, VoronoiDelaunayGrid
+from landlab.components import LinearDiffuser
 from landlab.plot.graph import plot_graph
-from landlab_parallel.io import vtu_dump, pvtu_dump
-
+from landlab_parallel.io import pvtu_dump, vtu_dump
+from mpi4py import MPI
 from plot_utils import create_pvd
-from grid_utils import get_perimeter_nodes_and_links
 
 warnings.simplefilter("always")
 
@@ -61,27 +64,26 @@ if rank == 0:
 
     ## step 1: define hex model grid and assign z values
     # grid info
-    grid_shape = [20, 20]
+    grid_shape = [25, 40]
     spacing = 10
     print(f"global grid shape: {grid_shape}, spacing: {spacing}m")
 
     # model parameter info
     time_steps = list(range(0, 100))
+
     D = 0.01  # m2/yr
-    dt = 0.2 * spacing * spacing / D  # courant condition for stability of diffusion
+    uplift_rate = 0.004  # m/yr
 
     model_parameters = {
         "time_steps": time_steps,
         "D": D,
-        "dt": dt,
+        "uplift_rate": uplift_rate,
     }
     print(f"total time_steps: {len(time_steps)}")
-    print(f"D:{D} m2/yr, dt: {dt} yr")
+    print(f"D:{D} m2/yr, uplift_rate m/yr: {uplift_rate}")
 
     # create output dir for global grid
-    output_dir = os.path.join(
-        os.getcwd(), f"lem_workflow_output_png_{num_partitions}"
-    )
+    output_dir = os.path.join(os.getcwd(), f"lem_workflow_output_png_{num_partitions}")
     os.makedirs(output_dir, exist_ok=True)
 
     output_pvtu = os.path.join(
@@ -93,13 +95,17 @@ if rank == 0:
     mg = HexModelGrid(grid_shape, spacing=spacing, node_layout="rect")
     z = mg.add_zeros("topographic__elevation", at="node")
 
+    # create elevation with fault
     fault_trace_y = 50.0 + 0.25 * mg.x_of_node
     z[mg.y_of_node > fault_trace_y] += (
         10.0 + 0.01 * mg.x_of_node[mg.y_of_node > fault_trace_y]
     )
-    print(f"initial elevation sum: {sum(z)} ")
 
-    qs = mg.add_zeros("sediment_flux", at="link")
+    # create random elevation
+    # rng = np.random.default_rng(seed=1)
+    # z[:] = rng.uniform(size=grid_shape, low=1, high=10).flatten()
+
+    print(f"initial elevation sum: {sum(z)} ")
 
     # identify boundary nodes
     boundary_nodes = mg.boundary_nodes  # status as fixed value 1
@@ -260,6 +266,9 @@ with warnings.catch_warnings(record=True) as w:
 
 local_z = local_vmg.add_field("topographic__elevation", elev, at="node")
 local_qs = local_vmg.add_zeros("sediment_flux", at="link")
+local_uplift_rate = local_vmg.add_full(
+    "uplift_rate", model_parameters["uplift_rate"], at="node"
+)
 local_vmg.status_at_node[perimeter_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
 
 if debug_plot:
@@ -293,7 +302,7 @@ if debug_plot:
         )
     for node_id in range(0, local_vmg.number_of_nodes):
         ax.annotate(
-            f"{vmg_global_ind[node_id]}/{rank}",
+            f"{node_id}/{local_vmg.at_node['topographic__elevation'][node_id]}",
             (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
             color="black",
             fontsize=8,
@@ -318,93 +327,104 @@ if debug_plot:
 if rank == 0:
     print("start model setup")
 
+# model parameters
 time_steps = model_parameters["time_steps"]
 D = model_parameters["D"]
-dt = model_parameters["dt"]
+
+# initiate model components
+uplift = Uplift(local_vmg)
+ld = LinearDiffuser(local_vmg, linear_diffusivity=D)
+# fa = FlowAccumulator(local_vmg)
+# sp = StreamPowerEroder(local_vmg, K_sp=0.0001)
+
+# compute dt from actual local Voronoi link lengths, then take global min across all ranks
+_ALPHA = 0.15
+local_dt = _ALPHA * (local_vmg.length_of_link[local_vmg.active_links].min() ** 2) / D
+dt = comm.allreduce(local_dt, op=MPI.MIN)
+
+# organize components and parameters
+components = [
+    (uplift, (dt,)),
+    (ld, (dt,)),
+    # (fa, ()),
+    # (sp, (dt,))
+]
 
 for time_step in time_steps:
     # run onestep
-    alpha_mean = 0.01
-    alpha_flux = 0.02
-    z_old = local_z.copy()
-    z_new = local_z.copy()
 
-    owned_updatable = np.setdiff1d(local_nodes_ind, local_boundary_nodes_ind)
-    g = local_vmg.calc_grad_at_link(local_z)
-    local_qs[local_vmg.active_links] = -D * g[local_vmg.active_links]
+    # # !! testing code: linear diffusion with math equations
+    # g = local_vmg.calc_grad_at_link(local_z)
+    # local_qs[local_vmg.active_links] = -D * g[local_vmg.active_links]
+    # dzdt = -local_vmg.calc_flux_div_at_node(local_qs)
+    # local_z[local_vmg.core_nodes] += dzdt[local_vmg.core_nodes] * dt
 
-    for n in owned_updatable:
-        nbrs = [k for k in local_vmg.adjacent_nodes_at_node[n] if k != -1]
-        mean_nbr = np.mean(z_old[nbrs])
+    # loop to run each component
+    for component, args in components:
+        component.run_one_step(*args)
 
-        flux_mag = 0.0
-        for lk in local_vmg.links_at_node[n]:
-            if lk == -1:
-                continue
-            flux_mag += abs(local_qs[lk])
+        # step 6: send and receive data for ghost nodes (new methods)
+        # make sure all ranks have finished the model run before communication
+        comm.Barrier()
 
-        z_new[n] = (
-            z_old[n] + alpha_mean * abs((mean_nbr - z_old[n])) + alpha_flux * flux_mag
-        )
+        # set non-blocking receive
+        recv_reqs = {}
+        for pid in recv_from.keys():
+            recv_reqs[pid] = comm.irecv(source=pid, tag=pid)
 
-    local_z[:] = z_new
+        # set non-blocking send
+        send_reqs = []
+        for pid, nodes_to_send in send_to.items():
+            nodes_to_send = sorted(nodes_to_send)
+            nodes_to_send_local_id = [global2local[val] for val in nodes_to_send]
+            elev_to_send = local_vmg.at_node["topographic__elevation"][
+                nodes_to_send_local_id
+            ].copy()
+            send_reqs.append(
+                comm.isend((nodes_to_send, elev_to_send), dest=pid, tag=rank)
+            )
 
-    # step 6: send and receive data for ghost nodes (new methods)
-    # make sure all ranks have finished the model run before communication
-    comm.Barrier()
+        # wait for all recv to finish and update ghost nodes values (non-blocking receive)
+        for pid, req in recv_reqs.items():
+            ghost_nodes, elev_values = (
+                req.wait()
+            )  # wait for finishing and then get the data
+            ghost_nodes_local_id = np.array(
+                [global2local[g] for g in ghost_nodes], dtype=int
+            )
+            local_vmg.at_node["topographic__elevation"][ghost_nodes_local_id] = (
+                elev_values
+            )
+            # local_vmg.at_node["drainage_area"][ghost_nodes_local_id] = drainage_area_to_send
 
-    # set non-blocking receive
-    recv_reqs = {}
-    for pid in recv_from.keys():
-        recv_reqs[pid] = comm.irecv(source=pid, tag=pid)
-
-    # set non-blocking send
-    send_reqs = []
-    for pid, nodes_to_send in send_to.items():
-        nodes_to_send = sorted(nodes_to_send)
-        nodes_to_send_local_id = [global2local[val] for val in nodes_to_send]
-        elev_to_send = local_vmg.at_node["topographic__elevation"][
-            nodes_to_send_local_id
-        ].copy()
-        send_reqs.append(comm.isend((nodes_to_send, elev_to_send), dest=pid, tag=rank))
-
-    # wait for all recv to finish and update ghost nodes values (non-blocking receive)
-    for pid, req in recv_reqs.items():
-        ghost_nodes, elev_values = (
-            req.wait()
-        )  # wait for finishing and then get the data
-        ghost_nodes_local_id = np.array(
-            [global2local[g] for g in ghost_nodes], dtype=int
-        )
-        local_vmg.at_node["topographic__elevation"][ghost_nodes_local_id] = elev_values
-
-    # make sure all send finished before next step
-    for req in send_reqs:
-        req.wait()
+            # make sure all send finished before next step
+            for req in send_reqs:
+                req.wait()
 
     # step7: make vtu file for each rank at each time step
     with open(os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w") as fp:
         fp.write(vtu_dump(local_vmg))
 
-    # # testing code!! make plots for each rank at each time as png file for debugging
-    # fig, ax = plt.subplots(figsize=[18, 14])
-    # sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
-    #                 c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
-    #                 vmin=-3)
-    # ax.set_title(f'subgrid nodes rank={rank}')
-    # for node_id in local_vmg.boundary_nodes:
-    #     ax.annotate(f"B",
-    #                 (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-    #                 color='blue', fontsize=12, ha='center', va='top')
-    # for node_id in range(0, local_vmg.number_of_nodes):
-    #     ax.annotate(f'{node_id}/{local_vmg.at_node["topographic__elevation"][node_id]}',
-    #                 (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-    #                 color='black',fontsize=12, ha='center', va='bottom')
-    # cbar = fig.colorbar(sc, ax=ax)
-    # cbar.set_label('Elevation (m)')
-    # fig.savefig(os.path.join(output_dir,
-    #             f'subgrid_for_rank{rank}_loop_{time_step}.png'))
-    # plt.close(fig)
+    # testing code!! make plots for each rank at each time as png file for debugging
+    # if time_step == time_steps[-1]:
+    #     fig, ax = plt.subplots(figsize=[18, 14])
+    #     sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
+    #                     c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
+    #                     vmin=-3)
+    #     ax.set_title(f'subgrid nodes rank={rank}')
+    #     for node_id in local_vmg.boundary_nodes:
+    #         ax.annotate(f"B",
+    #                     (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+    #                     color='blue', fontsize=12, ha='center', va='top')
+    #     for node_id in range(0, local_vmg.number_of_nodes):
+    #         ax.annotate(f'{node_id}/{local_vmg.at_node["topographic__elevation"][node_id]}',
+    #                     (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+    #                     color='black',fontsize=12, ha='center', va='bottom')
+    #     cbar = fig.colorbar(sc, ax=ax)
+    #     cbar.set_label('Elevation (m)')
+    #     fig.savefig(os.path.join(output_dir,
+    #                 f'subgrid_for_rank{rank}_loop_{time_step}.png'))
+    #     plt.close(fig)
 
 
 # check sum values
@@ -434,6 +454,16 @@ if rank == 0:
         os.path.join(output_dir, f"elevation_result_{num_partitions}.npy"),
         mg.at_node["topographic__elevation"],
     )
+
+    # create png file for final step elevation
+    mg.imshow("topographic__elevation")
+    print(
+        "final elev min and max: ",
+        mg.at_node["topographic__elevation"][mg.core_nodes].min(),
+        mg.at_node["topographic__elevation"][mg.core_nodes].max(),
+    )
+    plt.title("Elevation on Global Grid Final Step ")
+    plt.savefig(os.path.join(output_dir, "dem_hex_final.png"))
 
     # create pvtu files for each time step
     pvtu_files = []
