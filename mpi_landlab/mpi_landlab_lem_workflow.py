@@ -1,6 +1,4 @@
 """
-This is an experiment to use pymetis and mpi4py for landlab parallel workflow
-
 Model to run on
 LinearDiffuser StreamPowerEroder FlowAccumulator
 
@@ -9,23 +7,33 @@ if rank =0,
     step1: define HexModelGrid and add data fields: topographic__elevation,
     step2: grid partition using pymetis.
     step3: send each partition information used for the local grid
-step4: define local grid as Voronoi ModelGrid (this could be in a finer resolution
-        if needed)
+step4: define local grid as Voronoi ModelGrid
+
 step5:
-initiate model components (uplift, lineardiffuser)
+initiate model components
 calculate dt to fit for all local grids
 
 for each_step in time_steps:
     for component, args in components:
         component.run_one_ste(*args)
-        step6: send and receive elevation data for ghost nodes, update ghost nodes values
-               in local grid
+
+        step6: send and receive elevation and drainage area data for ghost nodes,
+        update ghost nodes values in local grid
+
     step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
 
+if rank =0,
+step8:
+    gather local nodes elevation values and update global grid
+    save final elevation results as npy file and png file
+    create pvtu files for each time step and a pvd file for all time steps
+
 Notes:
-    - this is based on mpi_landlab_simple_function.py and eric's example workflow
-    - this is aimed to test with the voronoi grid for the uplift and linear
-      diffuser component
+    - this workflow will keep mass balance only when uplift and lineardiffuser are enabled
+    - this workflow will not keep elevation mass balance when stream power eroder is enabled
+      because the flow accumulator will create different results with different cores
+    - this is based on mpi_landlab_simple_function.py and Eric's example workflow
+    - this is aimed to test with the voronoi grid for LEM workflow
 
 
 To run the program:
@@ -42,7 +50,7 @@ import numpy as np
 import pymetis
 from grid_utils import Uplift, get_perimeter_nodes_and_links
 from landlab import HexModelGrid, VoronoiDelaunayGrid
-from landlab.components import LinearDiffuser
+from landlab.components import FlowAccumulator, LinearDiffuser, StreamPowerEroder
 from landlab.plot.graph import plot_graph
 from landlab_parallel.io import pvtu_dump, vtu_dump
 from mpi4py import MPI
@@ -265,7 +273,8 @@ with warnings.catch_warnings(record=True) as w:
 
 
 local_z = local_vmg.add_field("topographic__elevation", elev, at="node")
-local_qs = local_vmg.add_zeros("sediment_flux", at="link")
+# local_qs = local_vmg.add_zeros("sediment_flux", at="link")
+# local_drainage = local_vmg.add_zeros("drainage_area", at="node")
 local_uplift_rate = local_vmg.add_full(
     "uplift_rate", model_parameters["uplift_rate"], at="node"
 )
@@ -334,8 +343,8 @@ D = model_parameters["D"]
 # initiate model components
 uplift = Uplift(local_vmg)
 ld = LinearDiffuser(local_vmg, linear_diffusivity=D)
-# fa = FlowAccumulator(local_vmg)
-# sp = StreamPowerEroder(local_vmg, K_sp=0.0001)
+fa = FlowAccumulator(local_vmg)
+sp = StreamPowerEroder(local_vmg, K_sp=0.0001)
 
 # compute dt from actual local Voronoi link lengths, then take global min across all ranks
 _ALPHA = 0.15
@@ -380,13 +389,20 @@ for time_step in time_steps:
             elev_to_send = local_vmg.at_node["topographic__elevation"][
                 nodes_to_send_local_id
             ].copy()
+            drainage_area_to_send = local_vmg.at_node["drainage_area"][
+                nodes_to_send_local_id
+            ].copy()
             send_reqs.append(
-                comm.isend((nodes_to_send, elev_to_send), dest=pid, tag=rank)
+                comm.isend(
+                    (nodes_to_send, elev_to_send, drainage_area_to_send),
+                    dest=pid,
+                    tag=rank,
+                )
             )
 
         # wait for all recv to finish and update ghost nodes values (non-blocking receive)
         for pid, req in recv_reqs.items():
-            ghost_nodes, elev_values = (
+            ghost_nodes, elev_values, drainage_area_values = (
                 req.wait()
             )  # wait for finishing and then get the data
             ghost_nodes_local_id = np.array(
@@ -395,7 +411,9 @@ for time_step in time_steps:
             local_vmg.at_node["topographic__elevation"][ghost_nodes_local_id] = (
                 elev_values
             )
-            # local_vmg.at_node["drainage_area"][ghost_nodes_local_id] = drainage_area_to_send
+            local_vmg.at_node["drainage_area"][ghost_nodes_local_id] = (
+                drainage_area_values
+            )
 
             # make sure all send finished before next step
             for req in send_reqs:
