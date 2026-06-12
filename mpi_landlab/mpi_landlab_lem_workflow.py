@@ -74,28 +74,32 @@ if rank == 0:
     # grid info
     grid_shape = [25, 40]
     spacing = 10
-    print(f"global grid shape: {grid_shape}, spacing: {spacing}m")
+    print(f"global grid shape: {grid_shape}, spacing: {spacing} m")
 
     # model parameter info
     time_steps = list(range(0, 100))
-
     D = 0.01  # m2/yr
+    ALPHA = 0.15
+    dt = 0.9 * ALPHA * (spacing**2) / D  # 0.9 * dt to make sure on subloop in ld
     uplift_rate = 0.004  # m/yr
 
     model_parameters = {
         "time_steps": time_steps,
         "D": D,
         "uplift_rate": uplift_rate,
+        "dt": dt,
     }
     print(f"total time_steps: {len(time_steps)}")
-    print(f"D:{D} m2/yr, uplift_rate m/yr: {uplift_rate}")
+    print(f"D:{D} m2/yr, uplift_rate m/yr: {uplift_rate}, dt:{dt} yr")
 
     # create output dir for global grid
-    output_dir = os.path.join(os.getcwd(), f"lem_workflow_output_png_{num_partitions}")
+    output_dir = os.path.join(
+        os.getcwd(), f"lem_workflow_output_png_{num_partitions}_{len(time_steps)}"
+    )
     os.makedirs(output_dir, exist_ok=True)
 
     output_pvtu = os.path.join(
-        os.getcwd(), f"lem_workflow_output_pvtu_{num_partitions}"
+        os.getcwd(), f"lem_workflow_output_pvtu_{num_partitions}_{len(time_steps)}"
     )
     os.makedirs(output_pvtu, exist_ok=True)
 
@@ -274,7 +278,6 @@ with warnings.catch_warnings(record=True) as w:
 
 local_z = local_vmg.add_field("topographic__elevation", elev, at="node")
 # local_qs = local_vmg.add_zeros("sediment_flux", at="link")
-# local_drainage = local_vmg.add_zeros("drainage_area", at="node")
 local_uplift_rate = local_vmg.add_full(
     "uplift_rate", model_parameters["uplift_rate"], at="node"
 )
@@ -339,17 +342,13 @@ if rank == 0:
 # model parameters
 time_steps = model_parameters["time_steps"]
 D = model_parameters["D"]
+dt = model_parameters["dt"]
 
 # initiate model components
 uplift = Uplift(local_vmg)
 ld = LinearDiffuser(local_vmg, linear_diffusivity=D)
 fa = FlowAccumulator(local_vmg)
 sp = StreamPowerEroder(local_vmg, K_sp=0.0001)
-
-# compute dt from actual local Voronoi link lengths, then take global min across all ranks
-_ALPHA = 0.15
-local_dt = _ALPHA * (local_vmg.length_of_link[local_vmg.active_links].min() ** 2) / D
-dt = comm.allreduce(local_dt, op=MPI.MIN)
 
 # organize components and parameters
 components = [
@@ -426,22 +425,37 @@ for time_step in time_steps:
     # testing code!! make plots for each rank at each time as png file for debugging
     # if time_step == time_steps[-1]:
     #     fig, ax = plt.subplots(figsize=[18, 14])
-    #     sc = ax.scatter(local_vmg.node_x, local_vmg.node_y,
-    #                     c=local_vmg.at_node["topographic__elevation"], cmap="coolwarm",
-    #                     vmin=-3)
-    #     ax.set_title(f'subgrid nodes rank={rank}')
+    #     sc = ax.scatter(
+    #         local_vmg.node_x,
+    #         local_vmg.node_y,
+    #         c=local_vmg.at_node["topographic__elevation"],
+    #         cmap="coolwarm",
+    #         vmin=-3,
+    #     )
+    #     ax.set_title(f"subgrid nodes rank={rank}")
     #     for node_id in local_vmg.boundary_nodes:
-    #         ax.annotate(f"B",
-    #                     (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-    #                     color='blue', fontsize=12, ha='center', va='top')
+    #         ax.annotate(
+    #             "B",
+    #             (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+    #             color="blue",
+    #             fontsize=12,
+    #             ha="center",
+    #             va="top",
+    #         )
     #     for node_id in range(0, local_vmg.number_of_nodes):
-    #         ax.annotate(f'{node_id}/{local_vmg.at_node["topographic__elevation"][node_id]}',
-    #                     (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
-    #                     color='black',fontsize=12, ha='center', va='bottom')
+    #         ax.annotate(
+    #             f"{node_id}/{local_vmg.at_node['topographic__elevation'][node_id]}",
+    #             (local_vmg.node_x[node_id], local_vmg.node_y[node_id]),
+    #             color="black",
+    #             fontsize=12,
+    #             ha="center",
+    #             va="bottom",
+    #         )
     #     cbar = fig.colorbar(sc, ax=ax)
-    #     cbar.set_label('Elevation (m)')
-    #     fig.savefig(os.path.join(output_dir,
-    #                 f'subgrid_for_rank{rank}_loop_{time_step}.png'))
+    #     cbar.set_label("Elevation (m)")
+    #     fig.savefig(
+    #         os.path.join(output_dir, f"subgrid_for_rank{rank}_loop_{time_step}.png")
+    #     )
     #     plt.close(fig)
 
 
