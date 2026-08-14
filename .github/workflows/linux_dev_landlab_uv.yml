@@ -85,6 +85,12 @@ jobs:
         run: |
           .venv/bin/python -c "from mpi4py import MPI; print(MPI.Get_processor_name())"
 
-      - name: Run Landlab MPI Test (matrix)
+      - name: Run Landlab MPI Test linear diffusion (math equation)
         run: |
           mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab/mpi_landlab_linear_diffusion.py
+
+      - name: Run Landlab MPI Test LEM workflow
+        shell: bash -el {0}
+        run: |
+          cd mpi_landlab
+          mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab/mpi_landlab_lem_workflow.py
