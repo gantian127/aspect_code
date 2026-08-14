@@ -84,7 +84,7 @@ jobs:
           pymetis \
           -c conda-forge \
           --override-channels
-    
+
         pip install landlab_parallel==0.1.0
 
     - name: Check MPI configuration
