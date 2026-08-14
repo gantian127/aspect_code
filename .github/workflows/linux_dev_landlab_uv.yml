@@ -92,5 +92,4 @@ jobs:
       - name: Run Landlab MPI Test LEM workflow
         shell: bash -el {0}
         run: |
-          cd mpi_landlab
           mpiexec --oversubscribe -n ${{ matrix.np }} .venv/bin/python mpi_landlab/mpi_landlab_lem_workflow.py
