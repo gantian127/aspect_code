@@ -1,49 +1,23 @@
 """
-Model to run on
-LinearDiffuser StreamPowerEroder FlowAccumulator
+Testing LEM workflow for performance evaluation
 
-Logic:
-if rank =0,
-    step1: define HexModelGrid and add data fields: topographic__elevation,
-    step2: grid partition using pymetis.
-    step3: send each partition information used for the local grid
-step4: define local grid as Voronoi ModelGrid
+This is based on mpi_landlab/mpi_landlab_lem_workflow.py
+with adjustments to track the time spent on different sections and disable output files.
 
-step5:
-initiate model components
-calculate dt to fit for all local grids
-
-for each_step in time_steps:
-    for component, args in components:
-        component.run_one_ste(*args)
-
-        step6: send and receive elevation and drainage area data for ghost nodes,
-        update ghost nodes values in local grid
-
-    step7: graph output for each rank (e.g. solution_time_step_rank.vtu)
-
-if rank =0,
-step8:
-    gather local nodes elevation values and update global grid
-    save final elevation results as npy file and png file
-    create pvtu files for each time step and a pvd file for all time steps
-
-Notes:
-    - this workflow will keep mass balance only when uplift and lineardiffuser are enabled
-    - this workflow will not keep elevation mass balance when stream power eroder is enabled
-      because the flow accumulator will create different results with different cores
-    - this is based on mpi_landlab_simple_function.py and Eric's example workflow
-    - this is aimed to test with the voronoi grid for LEM workflow
-
-
-To run the program:
-mpiexec --oversubscribe -np 5 python [mpi_landlab_script_name.py]
-
+mpiexec -n 4 python voronoi_lem_workflow.py --grid-shape 300,300
 """
 
+import time
+
+script_started = time.perf_counter()
+
+import argparse
+import csv
 import os
 import warnings
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -58,6 +32,74 @@ from plot_utils import create_pvd
 
 warnings.simplefilter("always")
 
+
+TIMING_FIELDS = (
+    "mpi_ranks",
+    "grid_shape",
+    "time_steps",
+    "global_grid_setup_s",
+    "local_grid_setup_s",
+    "model_loop_s",
+    "total_workflow_run_s",
+)
+
+
+def format_seconds(value):
+    """Format a timing value consistently for CSV output."""
+    return f"{value:.9f}"
+
+
+def write_timing_csv(path, rows):
+    """Write one maximum-across-ranks summary row for a workflow run."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=TIMING_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def parse_grid_shape(value):
+    """Parse a positive two-dimensional global grid shape."""
+    parts = value.split(",")
+    if len(parts) != 2 or any(not part or part != part.strip() for part in parts):
+        raise argparse.ArgumentTypeError("grid shape must be ROWS,COLUMNS")
+    try:
+        shape = tuple(int(part) for part in parts)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "grid shape dimensions must be integers"
+        ) from error
+    if any(dimension <= 0 for dimension in shape):
+        raise argparse.ArgumentTypeError("grid shape dimensions must be positive")
+    return shape
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--grid-shape",
+    type=parse_grid_shape,
+    default=(500, 500),
+    metavar="ROWS,COLUMNS",
+    help="global grid shape (default: 500,500)",
+)
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=1,
+    help="random seed for initial elevations (default: 1)",
+)
+parser.add_argument(
+    "--timing-output-dir",
+    type=Path,
+    default=Path(__file__).resolve().parent / "voronoi_timing_results",
+    metavar="DIR",
+    help=(
+        "directory for the per-run timing CSV "
+        "(default: performance_evaluation/voronoi_timing_results)"
+    ),
+)
+cli_args = parser.parse_args()
+
 ## step 0: set up parallel
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -66,21 +108,30 @@ size = comm.Get_size()
 # make sure number of partitions matches the MPI processes
 num_partitions = size
 debug_plot = False
+write_result_files = False
+
+run_id = None
+if rank == 0:
+    run_id = datetime.now().astimezone().strftime("%Y-%m-%d_%H%M%S_%f")
+
+# Global setup includes global-grid creation, partitioning, construction of the
+# per-rank metadata, distribution, and the broadcasts that complete step 3.
+comm.Barrier()
+global_grid_setup_started = MPI.Wtime()
 
 if rank == 0:
     print(f"number of partitions: {num_partitions}")
 
     ## step 1: define hex model grid and assign z values
     # grid info
-    grid_shape = [100, 100]
-    spacing = 10
+    grid_shape = list(cli_args.grid_shape)
+    spacing = 100
     print(f"global grid shape: {grid_shape}, spacing: {spacing} m")
 
     # model parameter info
-    time_steps = list(range(0, 100))
+    time_steps = list(range(0, 2000))
     D = 0.01  # m2/yr
-    ALPHA = 0.15
-    dt = 0.9 * ALPHA * (spacing**2) / D  # 0.9 * dt to make sure on subloop in ld
+    dt = 250.0  # yr
     uplift_rate = 0.004  # m/yr
 
     model_parameters = {
@@ -92,30 +143,28 @@ if rank == 0:
     print(f"total time_steps: {len(time_steps)}")
     print(f"D:{D} m2/yr, uplift_rate m/yr: {uplift_rate}, dt:{dt} yr")
 
-    # create output dir for global grid
-    output_dir = os.path.join(
-        os.getcwd(), f"lem_workflow_output_png_{num_partitions}_{len(time_steps)}"
-    )
-    os.makedirs(output_dir, exist_ok=True)
+    # Diagnostic plots and result files are disabled for pure scaling tests.
+    output_dir = None
+    if debug_plot or write_result_files:
+        output_dir = os.path.join(
+            os.getcwd(), f"lem_workflow_output_png_{num_partitions}_{len(time_steps)}"
+        )
+        os.makedirs(output_dir, exist_ok=True)
 
-    output_pvtu = os.path.join(
-        os.getcwd(), f"lem_workflow_output_pvtu_{num_partitions}_{len(time_steps)}"
-    )
-    os.makedirs(output_pvtu, exist_ok=True)
+    output_pvtu = None
+    if write_result_files:
+        output_pvtu = os.path.join(
+            os.getcwd(), f"lem_workflow_output_pvtu_{num_partitions}_{len(time_steps)}"
+        )
+        os.makedirs(output_pvtu, exist_ok=True)
 
     # define global grid
     mg = HexModelGrid(grid_shape, spacing=spacing, node_layout="rect")
     z = mg.add_zeros("topographic__elevation", at="node")
 
-    # create elevation with fault
-    fault_trace_y = 50.0 + 0.25 * mg.x_of_node
-    z[mg.y_of_node > fault_trace_y] += (
-        10.0 + 0.01 * mg.x_of_node[mg.y_of_node > fault_trace_y]
-    )
-
-    # create random elevation
-    # rng = np.random.default_rng(seed=1)
-    # z[:] = rng.uniform(size=grid_shape, low=1, high=10).flatten()
+    # Use the same deterministic elevation input as raster_lem_example.py.
+    rng = np.random.default_rng(seed=cli_args.seed)
+    z[:] = rng.uniform(size=grid_shape).flatten()
 
     print(f"initial elevation sum: {sum(z)} ")
 
@@ -262,8 +311,11 @@ output_dir = comm.bcast(output_dir, root=0)
 output_pvtu = comm.bcast(output_pvtu, root=0)
 model_parameters = comm.bcast(model_parameters, root=0)
 
+comm.Barrier()
+global_grid_setup_time = MPI.Wtime() - global_grid_setup_started
 
 ## step4: define local model grid
+local_grid_setup_started = MPI.Wtime()
 print(f"define local grid for rank {rank}")
 
 with warnings.catch_warnings(record=True) as w:
@@ -283,6 +335,9 @@ local_uplift_rate = local_vmg.add_full(
     "uplift_rate", model_parameters["uplift_rate"], at="node"
 )
 local_vmg.status_at_node[perimeter_nodes_ind] = local_vmg.BC_NODE_IS_FIXED_VALUE
+
+comm.Barrier()
+local_grid_setup_time = MPI.Wtime() - local_grid_setup_started
 
 if debug_plot:
     # plot subgrid for each rank
@@ -355,9 +410,15 @@ sp = StreamPowerEroder(local_vmg, K_sp=0.0001)
 components = [
     (uplift, (dt,)),
     (ld, (dt,)),
-    # (fa, ()),
-    # (sp, (dt,))
+    (fa, ()),
+    (sp, (dt,)),
 ]
+
+# Synchronize once at the measurement boundary. This complete loop wall time,
+# including component computation and required halo exchange, is the primary
+# strong/weak-scaling metric.
+comm.Barrier()
+model_loop_started = MPI.Wtime()
 
 for time_step in time_steps:
     # run onestep
@@ -369,8 +430,8 @@ for time_step in time_steps:
     # local_z[local_vmg.core_nodes] += dzdt[local_vmg.core_nodes] * dt
 
     # loop to run each component
-    for component, args in components:
-        component.run_one_step(*args)
+    for component, component_args in components:
+        component.run_one_step(*component_args)
 
         # step 6: send and receive data for ghost nodes (new methods)
         # make sure all ranks have finished the model run before communication
@@ -419,9 +480,12 @@ for time_step in time_steps:
             for req in send_reqs:
                 req.wait()
 
-    # step7: make vtu file for each rank at each time step
-    with open(os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w") as fp:
-        fp.write(vtu_dump(local_vmg))
+    # step7: make a VTU file for each rank at each time step
+    if write_result_files:
+        with open(
+            os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w"
+        ) as fp:
+            fp.write(vtu_dump(local_vmg))
 
     # testing code!! make plots for each rank at each time as png file for debugging
     # if time_step == time_steps[-1]:
@@ -460,6 +524,12 @@ for time_step in time_steps:
     #     plt.close(fig)
 
 
+comm.Barrier()
+model_loop_time = MPI.Wtime() - model_loop_started
+
+# Final checksum, reduction, gather, and global-grid reconstruction are kept
+# separate from the model loop because the distributed numerical solution is
+# already complete at this point.
 # check sum values
 local_sum = local_vmg.at_node["topographic__elevation"][local_nodes_ind].sum()
 print(f"final rank {rank}: {local_sum}")
@@ -483,10 +553,12 @@ if rank == 0:
     for node_id, elev in flat_updates:
         mg.at_node["topographic__elevation"][node_id] = elev
 
-    np.save(
-        os.path.join(output_dir, f"elevation_result_{num_partitions}.npy"),
-        mg.at_node["topographic__elevation"],
-    )
+if rank == 0:
+    if write_result_files:
+        np.save(
+            os.path.join(output_dir, f"elevation_result_{num_partitions}.npy"),
+            mg.at_node["topographic__elevation"],
+        )
 
     # create png file for final step elevation
     if debug_plot:
@@ -499,25 +571,68 @@ if rank == 0:
         plt.title("Elevation on Global Grid Final Step ")
         plt.savefig(os.path.join(output_dir, "dem_hex_final.png"))
 
-    # create pvtu files for each time step
-    pvtu_files = []
-    for time_step in time_steps:
-        # write pvtu file for each time step
-        with open(os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w") as fp:
-            fp.write(
-                pvtu_dump(
-                    local_vmg,
-                    [
-                        os.path.join(output_pvtu, f"rank{i}_{time_step}.vtu")
-                        for i in range(0, num_partitions)
-                    ],
+    if write_result_files:
+        # Create PVTU/PVD metadata and include it in the output timing category.
+        pvtu_files = []
+        for time_step in time_steps:
+            # write pvtu file for each time step
+            with open(
+                os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w"
+            ) as fp:
+                fp.write(
+                    pvtu_dump(
+                        local_vmg,
+                        [
+                            os.path.join(output_pvtu, f"rank{i}_{time_step}.vtu")
+                            for i in range(0, num_partitions)
+                        ],
+                    )
                 )
-            )
 
-        pvtu_files.append(f"global_{time_step}.pvtu")
+            pvtu_files.append(f"global_{time_step}.pvtu")
 
-    # create pvd files for all time steps
-    pvd_file_path = os.path.join(output_pvtu, "simulation.pvd")
-    create_pvd(pvtu_files, time_steps, pvd_file_path)
+        # create pvd files for all time steps
+        pvd_file_path = os.path.join(output_pvtu, "simulation.pvd")
+        create_pvd(pvtu_files, time_steps, pvd_file_path)
 
     print("Simulation is done!")
+
+# Measure from the first executable statement in this file through imports,
+# setup, the model loop, finalization, and optional result output. Timing-CSV
+# creation and Python/MPI process shutdown necessarily occur afterward.
+comm.Barrier()
+total_workflow_run_time = time.perf_counter() - script_started
+max_global_grid_setup_time = comm.reduce(
+    global_grid_setup_time, op=MPI.MAX, root=0
+)
+max_local_grid_setup_time = comm.reduce(local_grid_setup_time, op=MPI.MAX, root=0)
+max_model_loop_time = comm.reduce(model_loop_time, op=MPI.MAX, root=0)
+max_total_workflow_run_time = comm.reduce(
+    total_workflow_run_time, op=MPI.MAX, root=0
+)
+
+if rank == 0:
+    print("\nWorkflow timing summary (maximum across MPI ranks)")
+    print(f"  Global-grid setup:    {max_global_grid_setup_time:.6f} s")
+    print(f"  Local-grid setup:     {max_local_grid_setup_time:.6f} s")
+    print(f"  Model loop:           {max_model_loop_time:.6f} s")
+    print(
+        f"  Total workflow run:   {max_total_workflow_run_time:.6f} s",
+        flush=True,
+    )
+    timing_row = {
+        "mpi_ranks": num_partitions,
+        "grid_shape": f"{cli_args.grid_shape[0]}x{cli_args.grid_shape[1]}",
+        "time_steps": len(time_steps),
+        "global_grid_setup_s": format_seconds(max_global_grid_setup_time),
+        "local_grid_setup_s": format_seconds(max_local_grid_setup_time),
+        "model_loop_s": format_seconds(max_model_loop_time),
+        "total_workflow_run_s": format_seconds(max_total_workflow_run_time),
+    }
+    timing_filename = (
+        f"voronoi_timing_{run_id}_ranks_{num_partitions}_"
+        f"shape_{cli_args.grid_shape[0]}x{cli_args.grid_shape[1]}.csv"
+    )
+    timing_path = cli_args.timing_output_dir.resolve() / timing_filename
+    write_timing_csv(timing_path, [timing_row])
+    print(f"  Timing CSV:           {timing_path}", flush=True)

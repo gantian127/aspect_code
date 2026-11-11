@@ -1,20 +1,21 @@
 """This script is used for performance evaluation of weak scaling.
 
 Goal:
-    For a Landlab workflow, measure how well runtime remains constant when the
-    global problem size and processor count increase proportionally, keeping
-    the average workload per processor approximately constant.
+    For a Landlab workflow, measure how well model-loop runtime remains
+    constant when the global problem size and processor count increase
+    proportionally, keeping the average workload per processor approximately
+    constant.
 
 Metrics:
-    1. Runtime.
-    2. Weak-scaling efficiency: how well runtime remains constant as the global
-       problem size and processor count increase proportionally,
-       E(n) = T(reference) / T(n), with ideal E(n) = 1.
+    1. Model-loop runtime reported by the workflow.
+    2. Weak-scaling efficiency: how well model-loop runtime remains constant as
+       the global problem size and processor count increase proportionally,
+       E(n) = T_model(reference) / T_model(n), with ideal E(n) = 1.
     3. Plot comparing ideal and measured scaling:
        - x-axis: number of processors (MPI ranks);
-       - y-axis: runtime;
-       - ideal line: constant reference runtime (horizontal line);
-       - observed line: measured runtime for each processor count.
+       - y-axis: model-loop runtime;
+       - ideal line: constant reference model-loop runtime (horizontal line);
+       - observed line: measured model-loop runtime for each processor count.
 
 
 Example
@@ -23,6 +24,7 @@ python performance_weak_scaling.py \
   --workflow raster_lem_example.py \
   --ranks 1 4 \
   --grid-shapes 300,300 600,600 \
+  --repeats 1 \
   --results-dir weak_scaling_results_raster \
   --workflow-args --mode d4 --seed 1
 
@@ -64,8 +66,13 @@ RAW_FIELDS = (
     "workflow",
     "ranks",
     "global_shape",
+    "time_steps",
     "repetition",
-    "runtime_s",
+    "global_grid_setup_s",
+    "local_grid_setup_s",
+    "model_loop_s",
+    "total_workflow_run_s",
+    "command_runtime_s",
     "status",
     "excluded",
 )
@@ -74,10 +81,18 @@ SUMMARY_FIELDS = (
     "global_shape",
     "successful_runs",
     "excluded_outliers",
-    "average_runtime_s",
-    "std_runtime_s",
-    "ideal_runtime_s",
+    "average_model_loop_s",
+    "std_model_loop_s",
     "weak_scaling_efficiency",
+)
+WORKFLOW_TIMING_FIELDS = (
+    "mpi_ranks",
+    "grid_shape",
+    "time_steps",
+    "global_grid_setup_s",
+    "local_grid_setup_s",
+    "model_loop_s",
+    "total_workflow_run_s",
 )
 SINGLE_THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
@@ -91,6 +106,20 @@ GridShape = tuple[int, int]
 
 class BenchmarkError(RuntimeError):
     """Raised when a benchmark campaign cannot produce valid results."""
+
+
+@dataclass(frozen=True)
+class WorkflowTiming:
+    """Validated one-row timing summary produced by an MPI workflow."""
+
+    mpi_ranks: int
+    grid_shape: GridShape
+    time_steps: int
+    global_grid_setup_s: float
+    local_grid_setup_s: float
+    model_loop_s: float
+    total_workflow_run_s: float
+    csv_path: Path
 
 
 @dataclass(frozen=True)
@@ -109,7 +138,13 @@ class RunResult:
     ranks: int
     global_shape: GridShape
     repetition: int
-    runtime_s: float
+    time_steps: int | None
+    global_grid_setup_s: float | None
+    local_grid_setup_s: float | None
+    model_loop_s: float | None
+    total_workflow_run_s: float | None
+    command_runtime_s: float
+    timing_csv_path: Path | None
     status: str
     command: tuple[str, ...]
     returncode: int
@@ -122,8 +157,17 @@ class RunResult:
             "workflow": self.workflow,
             "ranks": self.ranks,
             "global_shape": format_grid_shape(self.global_shape),
+            "time_steps": "" if self.time_steps is None else self.time_steps,
             "repetition": self.repetition,
-            "runtime_s": f"{self.runtime_s:.9f}",
+            "global_grid_setup_s": format_optional_seconds(
+                self.global_grid_setup_s
+            ),
+            "local_grid_setup_s": format_optional_seconds(self.local_grid_setup_s),
+            "model_loop_s": format_optional_seconds(self.model_loop_s),
+            "total_workflow_run_s": format_optional_seconds(
+                self.total_workflow_run_s
+            ),
+            "command_runtime_s": f"{self.command_runtime_s:.9f}",
             "status": self.status,
             "excluded": str(self.excluded).lower(),
         }
@@ -169,6 +213,139 @@ def parse_grid_shape(value: str) -> GridShape:
 def format_grid_shape(shape: GridShape) -> str:
     """Format a grid shape using the documented command-line syntax."""
     return f"{shape[0]},{shape[1]}"
+
+
+def format_optional_seconds(value: float | None) -> str:
+    """Format an optional timing value for raw CSV output."""
+    return "" if value is None else f"{value:.9f}"
+
+
+def parse_timing_grid_shape(value: str, path: Path) -> GridShape:
+    """Normalize ROWSxCOLUMNS or ROWS,COLUMNS from a workflow timing CSV."""
+    stripped = value.strip()
+    if "x" in stripped.lower():
+        parts = stripped.lower().split("x")
+    else:
+        parts = stripped.split(",")
+    if len(parts) != 2 or any(not part or part != part.strip() for part in parts):
+        raise BenchmarkError(
+            f"invalid 'grid_shape' in workflow timing CSV {path}: {value!r}"
+        )
+    try:
+        shape = tuple(int(part) for part in parts)
+    except ValueError as error:
+        raise BenchmarkError(
+            f"invalid 'grid_shape' in workflow timing CSV {path}: {value!r}"
+        ) from error
+    if any(dimension <= 0 for dimension in shape):
+        raise BenchmarkError(
+            f"'grid_shape' must contain positive dimensions in workflow "
+            f"timing CSV {path}"
+        )
+    return shape[0], shape[1]
+
+
+def _parse_timing_int(row: dict[str, str], field: str, path: Path) -> int:
+    try:
+        value = int(row[field])
+    except (TypeError, ValueError) as error:
+        raise BenchmarkError(
+            f"invalid {field!r} in workflow timing CSV {path}: {row[field]!r}"
+        ) from error
+    if value <= 0:
+        raise BenchmarkError(
+            f"{field!r} must be positive in workflow timing CSV {path}"
+        )
+    return value
+
+
+def _parse_timing_float(
+    row: dict[str, str], field: str, path: Path, *, positive: bool
+) -> float:
+    try:
+        value = float(row[field])
+    except (TypeError, ValueError) as error:
+        raise BenchmarkError(
+            f"invalid {field!r} in workflow timing CSV {path}: {row[field]!r}"
+        ) from error
+    if not math.isfinite(value) or (value <= 0.0 if positive else value < 0.0):
+        requirement = "finite and positive" if positive else "finite and non-negative"
+        raise BenchmarkError(
+            f"{field!r} must be {requirement} in workflow timing CSV {path}"
+        )
+    return value
+
+
+def read_workflow_timing(
+    timing_output_dir: Path,
+    expected_ranks: int,
+    expected_shape: GridShape,
+) -> WorkflowTiming:
+    """Read and validate exactly one workflow-generated timing CSV."""
+    timing_files = sorted(timing_output_dir.glob("*.csv"))
+    if len(timing_files) != 1:
+        raise BenchmarkError(
+            f"expected exactly one timing CSV in {timing_output_dir}, "
+            f"found {len(timing_files)}"
+        )
+
+    path = timing_files[0]
+    try:
+        with path.open(newline="", encoding="utf-8") as stream:
+            reader = csv.DictReader(stream)
+            fieldnames = tuple(reader.fieldnames or ())
+            missing = [
+                field for field in WORKFLOW_TIMING_FIELDS if field not in fieldnames
+            ]
+            if missing:
+                raise BenchmarkError(
+                    f"workflow timing CSV {path} is missing columns: "
+                    f"{', '.join(missing)}"
+                )
+            rows = list(reader)
+    except OSError as error:
+        raise BenchmarkError(
+            f"could not read workflow timing CSV {path}: {error}"
+        ) from error
+
+    if len(rows) != 1:
+        raise BenchmarkError(
+            f"workflow timing CSV {path} must contain exactly one data row; "
+            f"found {len(rows)}"
+        )
+    row = rows[0]
+
+    mpi_ranks = _parse_timing_int(row, "mpi_ranks", path)
+    if mpi_ranks != expected_ranks:
+        raise BenchmarkError(
+            f"workflow timing CSV {path} reports {mpi_ranks} MPI ranks; "
+            f"expected {expected_ranks}"
+        )
+
+    grid_shape = parse_timing_grid_shape(row["grid_shape"], path)
+    if grid_shape != expected_shape:
+        raise BenchmarkError(
+            f"workflow timing CSV {path} reports grid shape "
+            f"{format_grid_shape(grid_shape)!r}; expected "
+            f"{format_grid_shape(expected_shape)!r}"
+        )
+
+    return WorkflowTiming(
+        mpi_ranks=mpi_ranks,
+        grid_shape=grid_shape,
+        time_steps=_parse_timing_int(row, "time_steps", path),
+        global_grid_setup_s=_parse_timing_float(
+            row, "global_grid_setup_s", path, positive=False
+        ),
+        local_grid_setup_s=_parse_timing_float(
+            row, "local_grid_setup_s", path, positive=False
+        ),
+        model_loop_s=_parse_timing_float(row, "model_loop_s", path, positive=True),
+        total_workflow_run_s=_parse_timing_float(
+            row, "total_workflow_run_s", path, positive=True
+        ),
+        csv_path=path.resolve(),
+    )
 
 
 def _path_inside_base(path: Path, label: str) -> Path:
@@ -273,8 +450,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--ranks must be in strictly increasing order")
     if len(args.ranks) != len(args.grid_shapes):
         parser.error("--ranks and --grid-shapes must contain the same number of values")
-    if "--grid-shape" in args.workflow_args:
-        parser.error("do not pass --grid-shape through --workflow-args")
+    if any(
+        value == "--grid-shape" or value.startswith("--grid-shape=")
+        for value in args.workflow_args
+    ):
+        parser.error(
+            "do not pass --grid-shape through --workflow-args; "
+            "the benchmark manages it"
+        )
+    if any(
+        value == "--timing-output-dir"
+        or value.startswith("--timing-output-dir=")
+        for value in args.workflow_args
+    ):
+        parser.error(
+            "do not pass --timing-output-dir through --workflow-args; "
+            "the benchmark manages it"
+        )
 
     try:
         args.workflow = _path_inside_base(args.workflow, "--workflow")
@@ -351,9 +543,19 @@ def run_workflow(
     case: BenchmarkCase,
     repetition: int,
     mpi_launcher: str,
+    timing_output_dir: Path,
     workflow_args: Sequence[str] = (),
 ) -> RunResult:
-    """Launch one MPI run and measure its end-to-end wall-clock runtime."""
+    """Launch one MPI run and read its workflow-owned model-loop timing."""
+    if timing_output_dir.exists():
+        if not timing_output_dir.is_dir() or any(timing_output_dir.iterdir()):
+            raise BenchmarkError(
+                "workflow timing directory must be a new empty directory: "
+                f"{timing_output_dir}"
+            )
+    else:
+        timing_output_dir.mkdir(parents=True)
+
     command = (
         mpi_launcher,
         "-n",
@@ -362,6 +564,8 @@ def run_workflow(
         str(workflow),
         "--grid-shape",
         format_grid_shape(case.global_shape),
+        "--timing-output-dir",
+        str(timing_output_dir.resolve()),
         *workflow_args,
     )
     environment = os.environ.copy()
@@ -384,15 +588,40 @@ def run_workflow(
         returncode = -1
         stdout = ""
         stderr = f"{type(error).__name__}: {error}\n"
-    runtime_s = time.perf_counter() - started
-    status = "success" if returncode == 0 else "failed"
+    command_runtime_s = time.perf_counter() - started
+
+    timing: WorkflowTiming | None = None
+    status = "failed"
+    if returncode == 0:
+        try:
+            timing = read_workflow_timing(
+                timing_output_dir,
+                expected_ranks=case.ranks,
+                expected_shape=case.global_shape,
+            )
+        except BenchmarkError as error:
+            if stderr and not stderr.endswith("\n"):
+                stderr += "\n"
+            stderr += f"timing error: {error}\n"
+        else:
+            status = "success"
 
     return RunResult(
         workflow=workflow.name,
         ranks=case.ranks,
         global_shape=case.global_shape,
         repetition=repetition,
-        runtime_s=runtime_s,
+        time_steps=None if timing is None else timing.time_steps,
+        global_grid_setup_s=(
+            None if timing is None else timing.global_grid_setup_s
+        ),
+        local_grid_setup_s=None if timing is None else timing.local_grid_setup_s,
+        model_loop_s=None if timing is None else timing.model_loop_s,
+        total_workflow_run_s=(
+            None if timing is None else timing.total_workflow_run_s
+        ),
+        command_runtime_s=command_runtime_s,
+        timing_csv_path=None if timing is None else timing.csv_path,
         status=status,
         command=command,
         returncode=returncode,
@@ -407,9 +636,19 @@ def write_run_log(path: Path, result: RunResult) -> None:
         f"command: {shlex.join(result.command)}\n"
         f"ranks: {result.ranks}\n"
         f"global_shape: {format_grid_shape(result.global_shape)}\n"
+        f"time_steps: {'' if result.time_steps is None else result.time_steps}\n"
         f"repetition: {result.repetition}\n"
         f"exit_code: {result.returncode}\n"
-        f"runtime_s: {result.runtime_s:.9f}\n"
+        f"model_loop_s: {format_optional_seconds(result.model_loop_s)}\n"
+        f"global_grid_setup_s: "
+        f"{format_optional_seconds(result.global_grid_setup_s)}\n"
+        f"local_grid_setup_s: "
+        f"{format_optional_seconds(result.local_grid_setup_s)}\n"
+        f"total_workflow_run_s: "
+        f"{format_optional_seconds(result.total_workflow_run_s)}\n"
+        f"command_runtime_s: {result.command_runtime_s:.9f}\n"
+        f"timing_csv: "
+        f"{'' if result.timing_csv_path is None else result.timing_csv_path}\n"
         f"status: {result.status}\n\n"
         "--- stdout ---\n"
         f"{result.stdout}"
@@ -443,12 +682,14 @@ def write_raw_csv(path: Path, results: Sequence[RunResult]) -> None:
 def filter_runtime_outliers(
     results: Sequence[RunResult],
 ) -> tuple[list[RunResult], list[RunResult]]:
-    """Separate only clear runtime outliers using modified z-scores."""
+    """Separate only clear model-loop outliers using modified z-scores."""
     included = list(results)
     if len(included) < 3:
         return included, []
 
-    runtimes = [result.runtime_s for result in included]
+    if any(result.model_loop_s is None for result in included):
+        raise BenchmarkError("successful run is missing model_loop_s")
+    runtimes = [float(result.model_loop_s) for result in included]
     median = statistics.median(runtimes)
     deviations = [abs(runtime - median) for runtime in runtimes]
     median_absolute_deviation = statistics.median(deviations)
@@ -471,7 +712,7 @@ def filter_runtime_outliers(
 def summarize_results(
     results: Sequence[RunResult], cases: Sequence[BenchmarkCase]
 ) -> list[dict[str, int | float | str]]:
-    """Calculate average runtime and weak-scaling efficiency for every case."""
+    """Calculate model-loop averages and weak-scaling efficiency."""
     successful: dict[BenchmarkCase, list[RunResult]] = {case: [] for case in cases}
     for result in results:
         case = BenchmarkCase(result.ranks, result.global_shape)
@@ -486,6 +727,22 @@ def summarize_results(
         )
         raise BenchmarkError("no successful measurements for: " + labels)
 
+    time_steps = {
+        result.time_steps for values in successful.values() for result in values
+    }
+    if None in time_steps:
+        raise BenchmarkError("successful run is missing time_steps")
+    if len(time_steps) != 1:
+        raise BenchmarkError(
+            "weak-scaling runs must use one fixed time-step count"
+        )
+    if any(
+        result.model_loop_s is None
+        for values in successful.values()
+        for result in values
+    ):
+        raise BenchmarkError("successful run is missing model_loop_s")
+
     excluded_by_case: dict[BenchmarkCase, list[RunResult]] = {}
     for case in cases:
         included, excluded = filter_runtime_outliers(successful[case])
@@ -495,7 +752,7 @@ def summarize_results(
             result.excluded = True
 
     averages = {
-        case: statistics.fmean(result.runtime_s for result in values)
+        case: statistics.fmean(float(result.model_loop_s) for result in values)
         for case, values in successful.items()
     }
     baseline = averages[cases[0]]
@@ -503,7 +760,7 @@ def summarize_results(
     summary: list[dict[str, int | float | str]] = []
     for case in cases:
         retained = successful[case]
-        runtimes = [result.runtime_s for result in retained]
+        runtimes = [float(result.model_loop_s) for result in retained]
         average = averages[case]
         summary.append(
             {
@@ -511,11 +768,10 @@ def summarize_results(
                 "global_shape": format_grid_shape(case.global_shape),
                 "successful_runs": len(retained),
                 "excluded_outliers": len(excluded_by_case[case]),
-                "average_runtime_s": average,
-                "std_runtime_s": (
+                "average_model_loop_s": average,
+                "std_model_loop_s": (
                     statistics.stdev(runtimes) if len(runtimes) > 1 else 0.0
                 ),
-                "ideal_runtime_s": baseline,
                 "weak_scaling_efficiency": baseline / average,
             }
         )
@@ -535,9 +791,12 @@ def write_summary_csv(
                     "global_shape": row["global_shape"],
                     "successful_runs": row["successful_runs"],
                     "excluded_outliers": row["excluded_outliers"],
-                    "average_runtime_s": f"{float(row['average_runtime_s']):.9f}",
-                    "std_runtime_s": f"{float(row['std_runtime_s']):.9f}",
-                    "ideal_runtime_s": f"{float(row['ideal_runtime_s']):.9f}",
+                    "average_model_loop_s": (
+                        f"{float(row['average_model_loop_s']):.9f}"
+                    ),
+                    "std_model_loop_s": (
+                        f"{float(row['std_model_loop_s']):.9f}"
+                    ),
                     "weak_scaling_efficiency": (
                         f"{float(row['weak_scaling_efficiency']):.9f}"
                     ),
@@ -550,7 +809,7 @@ def plot_runtime(
     path: Path,
     log_x: bool = False,
 ) -> None:
-    """Plot observed runtime against ideal constant weak-scaling runtime."""
+    """Plot observed model-loop runtime against ideal weak scaling."""
     try:
         import matplotlib
 
@@ -561,8 +820,8 @@ def plot_runtime(
         raise BenchmarkError("matplotlib is required to create plots") from error
 
     ranks = [int(row["ranks"]) for row in summary]
-    observed = [float(row["average_runtime_s"]) for row in summary]
-    ideal = [float(row["ideal_runtime_s"]) for row in summary]
+    observed = [float(row["average_model_loop_s"]) for row in summary]
+    ideal = [observed[0]] * len(observed)
 
     figure, axes = plt.subplots(figsize=(7, 5))
     axes.plot(ranks, ideal, "--", color="0.35", linewidth=2, label="Ideal")
@@ -572,8 +831,8 @@ def plot_runtime(
         axes.xaxis.set_major_formatter(ScalarFormatter())
     axes.set_xticks(ranks)
     axes.set_xlabel("MPI ranks")
-    axes.set_ylabel("Runtime (s)")
-    axes.set_title("Weak-Scaling Runtime")
+    axes.set_ylabel("Model-loop runtime (s)")
+    axes.set_title("Weak-Scaling Model-Loop Runtime")
     axes.grid(True, alpha=0.3)
     axes.legend()
     figure.tight_layout()
@@ -585,7 +844,7 @@ def print_summary(summary: Sequence[dict[str, int | float | str]]) -> None:
     print("\nWeak-scaling summary")
     print(
         f"{'ranks':>7} {'global_shape':>14} {'used':>6} {'excluded':>10} "
-        f"{'average_s':>14} {'efficiency':>12}"
+        f"{'avg_model_s':>14} {'efficiency':>12}"
     )
     for row in summary:
         print(
@@ -593,7 +852,7 @@ def print_summary(summary: Sequence[dict[str, int | float | str]]) -> None:
             f"{str(row['global_shape']):>14} "
             f"{int(row['successful_runs']):>6d} "
             f"{int(row['excluded_outliers']):>10d} "
-            f"{float(row['average_runtime_s']):>14.6f} "
+            f"{float(row['average_model_loop_s']):>14.6f} "
             f"{float(row['weak_scaling_efficiency']):>12.4f}"
         )
 
@@ -609,6 +868,8 @@ def run_benchmark(
     results_dir = create_results_directory(args.results_dir)
     logs_dir = results_dir / "run_logs"
     logs_dir.mkdir()
+    workflow_timings_dir = results_dir / "workflow_timings"
+    workflow_timings_dir.mkdir()
     raw_path = results_dir / "raw_runtime.csv"
     initialize_raw_csv(raw_path)
 
@@ -626,6 +887,8 @@ def run_benchmark(
                 case,
                 repetition,
                 mpi_launcher,
+                workflow_timings_dir
+                / f"ranks_{case.ranks}_repeat_{repetition}",
                 args.workflow_args,
             )
             results.append(result)
@@ -634,10 +897,15 @@ def run_benchmark(
             append_raw_result(raw_path, result)
 
             if result.status == "success":
-                print(f"Completed in {result.runtime_s:.2f} seconds.", flush=True)
+                print(
+                    f"Completed; model loop {float(result.model_loop_s):.2f} "
+                    "seconds.",
+                    flush=True,
+                )
             else:
                 print(
-                    f"Failed after {result.runtime_s:.2f} seconds; see {log_path}.",
+                    f"Failed after {result.command_runtime_s:.2f} seconds; "
+                    f"see {log_path}.",
                     file=sys.stderr,
                     flush=True,
                 )

@@ -1,12 +1,19 @@
 """
 This is based on Eric's run_lem_example.py in landlab-parallel package.
 
-mpiexec -n 4 python raster_lem_example.py 100 --mode odd-r --seed 1
-
+mpiexec -n 4 python raster_lem_example.py --grid-shape 300,300 --mode d4 --seed 1
+mpiexec -n 4 python raster_lem_example.py --grid-shape 300,300 --mode odd-r --seed 1
 """
-# FI_PROVIDER=tcp mpiexec -n 4 python run_test.py
+
+import time
+
+script_started = time.perf_counter()
+
 import argparse
+import csv
 import os
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 from landlab.components import FlowAccumulator
@@ -23,6 +30,34 @@ from landlab_parallel.tiler import D4Tiler
 from landlab_parallel.tiler import OddRTiler
 from landlab_parallel.tiler import Tile
 
+debug_plot = False
+write_result_files = False
+timing_output_dir = Path(__file__).resolve().parent / "raster_timing_results"
+
+TIMING_FIELDS = (
+    "mpi_ranks",
+    "grid_shape",
+    "time_steps",
+    "global_grid_setup_s",
+    "local_grid_setup_s",
+    "model_loop_s",
+    "total_workflow_run_s",
+)
+
+
+def format_seconds(value):
+    """Format a timing value consistently for CSV output."""
+    return f"{value:.9f}"
+
+
+def write_timing_csv(path, rows):
+    """Write one maximum-across-ranks summary row for a workflow run."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=TIMING_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
 
 def run(shape, mode="odd-r", seed=None):
     from mpi4py import MPI
@@ -30,6 +65,15 @@ def run(shape, mode="odd-r", seed=None):
     comm = MPI.COMM_WORLD
     RANK = comm.Get_rank()
     n_partitions = comm.Get_size()
+
+    run_id = None
+    if RANK == 0:
+        run_id = datetime.now().astimezone().strftime("%Y-%m-%d_%H%M%S_%f")
+
+    # Global setup includes global-array creation, partitioning, scattering,
+    # and distribution of each rank's tile data.
+    comm.Barrier()
+    global_grid_setup_started = MPI.Wtime()
 
     if RANK == 0:
         rng = np.random.default_rng(seed=seed)
@@ -78,6 +122,13 @@ def run(shape, mode="odd-r", seed=None):
         comm.Recv(uplift_rate.reshape(-1), source=0, tag=4)
         comm.Recv(status_at_node.reshape(-1), source=0, tag=5)
 
+    comm.Barrier()
+    global_grid_setup_time = MPI.Wtime() - global_grid_setup_started
+
+    # Local setup includes tile metadata, ghost ownership, local-grid
+    # construction, boundary status, and local fields.
+    local_grid_setup_started = MPI.Wtime()
+
     my_tile = Tile(ij_of_lower_left, shape, partition, id_=RANK, mode=mode)
 
     my_ghosts = transform_values(
@@ -102,12 +153,21 @@ def run(shape, mode="odd-r", seed=None):
     grid.add_field("topographic__elevation", elevation, at="node")
     grid.add_field("uplift_rate", uplift_rate, at="node")
 
+    comm.Barrier()
+    local_grid_setup_time = MPI.Wtime() - local_grid_setup_started
+
     uplift = Uplift(grid)
     fa = FlowAccumulator(grid)
     sp = StreamPowerEroder(grid, K_sp=0.0001)
     ld = LinearDiffuser(grid, linear_diffusivity=0.01)
 
     components = [(uplift, (250.0,)), (ld, (250.0,)), (fa, ()), (sp, (250.0,))]
+
+    # The complete component loop, including required ghost-data exchange, is
+    # the primary strong/weak-scaling metric.
+    comm.Barrier()
+    model_loop_started = MPI.Wtime()
+
     for _ in range(2000):
         for component, args in components:
             component.run_one_step(*args)
@@ -118,8 +178,12 @@ def run(shape, mode="odd-r", seed=None):
                 (grid.at_node["topographic__elevation"], grid.at_node["drainage_area"]),
             )
 
-    with open(f"{RANK}.vtu", "w") as fp:
-        fp.write(vtu_dump(grid, z_coord="topographic__elevation"))
+    comm.Barrier()
+    model_loop_time = MPI.Wtime() - model_loop_started
+
+    if write_result_files:
+        with open(f"{RANK}.vtu", "w") as fp:
+            fp.write(vtu_dump(grid, z_coord="topographic__elevation"))
 
     if RANK == 0:
         tile_data = {0: grid.at_node["topographic__elevation"]}
@@ -127,12 +191,55 @@ def run(shape, mode="odd-r", seed=None):
             tile_data[rank] = np.empty(tiler.get_tile_size(rank), dtype=float)
             comm.Recv(tile_data[rank], source=rank, tag=0)
 
-        print_output(tiler.gather(tile_data))
+        if debug_plot:
+            print_output(tiler.gather(tile_data))
 
-        with open("full.pvtu", "w") as fp:
-            fp.write(pvtu_dump(grid, [f"{rank}.vtu" for rank in range(n_partitions)]))
+        if write_result_files:
+            with open("full.pvtu", "w") as fp:
+                fp.write(
+                    pvtu_dump(grid, [f"{rank}.vtu" for rank in range(n_partitions)])
+                )
     else:
         comm.Send(grid.at_node["topographic__elevation"], dest=0, tag=0)
+
+    # Measure from the first executable statement in this file through setup,
+    # model execution, MPI communication, and result-file output. The slowest
+    # rank determines the parallel wall-clock runtime.
+    comm.Barrier()
+    script_time = time.perf_counter() - script_started
+    max_script_time = comm.reduce(script_time, op=MPI.MAX, root=0)
+    max_global_grid_setup_time = comm.reduce(
+        global_grid_setup_time, op=MPI.MAX, root=0
+    )
+    max_local_grid_setup_time = comm.reduce(
+        local_grid_setup_time, op=MPI.MAX, root=0
+    )
+    max_model_loop_time = comm.reduce(model_loop_time, op=MPI.MAX, root=0)
+
+    if RANK == 0:
+        print(f"Complete Python script: {max_script_time:.6f} s", flush=True)
+        print("\nWorkflow timing summary (maximum across MPI ranks)")
+        print(f"  Global-grid setup:    {max_global_grid_setup_time:.6f} s")
+        print(f"  Local-grid setup:     {max_local_grid_setup_time:.6f} s")
+        print(f"  Model loop:           {max_model_loop_time:.6f} s")
+        print(f"  Total workflow run:   {max_script_time:.6f} s", flush=True)
+
+        timing_row = {
+            "mpi_ranks": n_partitions,
+            "grid_shape": f"{shape[0]}x{shape[1]}",
+            "time_steps": 2000,
+            "global_grid_setup_s": format_seconds(max_global_grid_setup_time),
+            "local_grid_setup_s": format_seconds(max_local_grid_setup_time),
+            "model_loop_s": format_seconds(max_model_loop_time),
+            "total_workflow_run_s": format_seconds(max_script_time),
+        }
+        timing_filename = (
+            f"raster_timing_{run_id}_ranks_{n_partitions}_"
+            f"shape_{shape[0]}x{shape[1]}.csv"
+        )
+        timing_path = timing_output_dir.resolve() / timing_filename
+        write_timing_csv(timing_path, [timing_row])
+        print(f"  Timing CSV:           {timing_path}", flush=True)
 
     return 0
 
@@ -149,16 +256,67 @@ class Uplift:
 
 
 def main():
+    global timing_output_dir
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("size", type=int, help="Size of the grid")
-    parser.add_argument("--mode", choices=("d4", "odd-r"), help="Grid type")
     parser.add_argument(
-        "--seed", type=int, default=None, help="Random seed for initial elevations"
+        "size",
+        type=int,
+        nargs="?",
+        help="legacy grid size; creates a SIZE by 2*SIZE global grid",
     )
-
+    parser.add_argument(
+        "--grid-shape",
+        type=parse_grid_shape,
+        metavar="ROWS,COLUMNS",
+        help="explicit global grid shape",
+    )
+    parser.add_argument(
+        "--mode", choices=("d4", "odd-r"), default="odd-r", help="Grid type"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1,
+        help="Random seed for initial elevations (default: 1)",
+    )
+    parser.add_argument(
+        "--timing-output-dir",
+        type=Path,
+        default=timing_output_dir,
+        metavar="DIR",
+        help=(
+            "directory for the per-run timing CSV "
+            "(default: performance_evaluation/raster_timing_results)"
+        ),
+    )
     args = parser.parse_args()
+    timing_output_dir = args.timing_output_dir
 
-    return run((args.size, 2 * args.size), args.mode, args.seed)
+    if args.grid_shape is not None and args.size is not None:
+        parser.error("use either size or --grid-shape, not both")
+    if args.grid_shape is None and args.size is None:
+        parser.error("provide size or --grid-shape")
+
+    shape = args.grid_shape or (args.size, 2 * args.size)
+
+    return run(shape, args.mode, args.seed)
+
+
+def parse_grid_shape(value):
+    """Parse a positive two-dimensional global grid shape."""
+    parts = value.split(",")
+    if len(parts) != 2 or any(not part or part != part.strip() for part in parts):
+        raise argparse.ArgumentTypeError("grid shape must be ROWS,COLUMNS")
+    try:
+        shape = tuple(int(part) for part in parts)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "grid shape dimensions must be integers"
+        ) from error
+    if any(dimension <= 0 for dimension in shape):
+        raise argparse.ArgumentTypeError("grid shape dimensions must be positive")
+    return shape
 
 
 def print_output(array):
