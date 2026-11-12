@@ -4,9 +4,9 @@
 #SBATCH --partition=acpu
 #SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=64
 #SBATCH --cpus-per-task=1
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mem=32G
 #SBATCH --output=strong-raster-%j.out
 #SBATCH --error=strong-raster-%j.err
@@ -28,7 +28,7 @@ cd /home/tiga7385/aspect_code/performance_evaluation
 python performance_strong_scaling.py \
     --workflow raster_lem_example.py \
     --grid-shape 2000,2000 \
-    --cores 1 \
+    --cores 1 2 4 8 16 32 64 \
     --repetitions 1 \
     --log-x \
     --results-dir strong_scaling_results_raster_large_batch \
