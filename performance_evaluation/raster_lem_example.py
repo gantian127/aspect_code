@@ -168,7 +168,8 @@ def run(shape, mode="odd-r", seed=None):
     comm.Barrier()
     model_loop_started = MPI.Wtime()
 
-    for _ in range(200):  # time step original 2000
+    num_time_steps = 200
+    for _ in range(num_time_steps):
         for component, args in components:
             component.run_one_step(*args)
             send_receive_ghost_data(
@@ -227,7 +228,7 @@ def run(shape, mode="odd-r", seed=None):
         timing_row = {
             "mpi_ranks": n_partitions,
             "grid_shape": f"{shape[0]}x{shape[1]}",
-            "time_steps": 2000,
+            "time_steps": num_time_steps,
             "global_grid_setup_s": format_seconds(max_global_grid_setup_time),
             "local_grid_setup_s": format_seconds(max_local_grid_setup_time),
             "model_loop_s": format_seconds(max_model_loop_time),
