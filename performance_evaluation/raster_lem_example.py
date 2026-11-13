@@ -168,7 +168,7 @@ def run(shape, mode="odd-r", seed=None):
     comm.Barrier()
     model_loop_started = MPI.Wtime()
 
-    for _ in range(2000):
+    for _ in range(200):  # time step original 2000
         for component, args in components:
             component.run_one_step(*args)
             send_receive_ghost_data(

@@ -129,7 +129,7 @@ if rank == 0:
     print(f"global grid shape: {grid_shape}, spacing: {spacing} m")
 
     # model parameter info
-    time_steps = list(range(0, 2000))
+    time_steps = list(range(0, 200))  # time step original 2000
     D = 0.01  # m2/yr
     dt = 250.0  # yr
     uplift_rate = 0.004  # m/yr
