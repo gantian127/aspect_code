@@ -91,7 +91,7 @@ def run(shape, mode="odd-r", seed=None):
 
         for _rank in range(1, n_partitions):
             ij_of_lower_left = np.asarray([s.start for s in tiler[_rank]], dtype="i")
-            tile = tiler.getvalue(_rank)
+            tile = np.asarray(tiler.getvalue(_rank), dtype="i")
 
             comm.Send(np.array(tile.shape, dtype="i"), dest=_rank, tag=0)
             comm.Send(ij_of_lower_left, dest=_rank, tag=1)
@@ -113,7 +113,7 @@ def run(shape, mode="odd-r", seed=None):
         comm.Recv(tile_shape, source=0, tag=0)
         comm.Recv(ij_of_lower_left, source=0, tag=1)
 
-        partition = np.empty(tile_shape, dtype=int)
+        partition = np.empty(tile_shape, dtype="i")
         elevation = np.empty(tile_shape, dtype=float)
         uplift_rate = np.empty(tile_shape, dtype=float)
         status_at_node = np.empty(tile_shape, dtype=np.uint8)
