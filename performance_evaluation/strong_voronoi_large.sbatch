@@ -6,8 +6,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=64
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=32G
-#SBATCH --time=08:00:00
+#SBATCH --mem-per-cpu=2G
+#SBATCH --time=10:00:00
 #SBATCH --output=strong-voronoi-%j.out
 #SBATCH --error=strong-voronoi-%j.err
 
@@ -22,7 +22,7 @@ export MPLBACKEND=Agg
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-
+export MPI4PY_RC_IRECV_BUFSZ=1048576
 cd /home/tiga7385/aspect_code/performance_evaluation
 
 python performance_strong_scaling.py \
