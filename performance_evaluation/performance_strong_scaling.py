@@ -145,14 +145,10 @@ class RunResult:
             "grid_shape": format_timing_grid_shape(self.global_shape),
             "time_steps": "" if self.time_steps is None else self.time_steps,
             "repetition": self.repetition,
-            "global_grid_setup_s": format_optional_seconds(
-                self.global_grid_setup_s
-            ),
+            "global_grid_setup_s": format_optional_seconds(self.global_grid_setup_s),
             "local_grid_setup_s": format_optional_seconds(self.local_grid_setup_s),
             "model_loop_s": format_optional_seconds(self.model_loop_s),
-            "total_workflow_run_s": format_optional_seconds(
-                self.total_workflow_run_s
-            ),
+            "total_workflow_run_s": format_optional_seconds(self.total_workflow_run_s),
             "command_runtime_s": f"{self.command_runtime_s:.9f}",
             "status": self.status,
         }
@@ -245,7 +241,9 @@ def read_workflow_timing(
         with path.open(newline="", encoding="utf-8") as stream:
             reader = csv.DictReader(stream)
             fieldnames = tuple(reader.fieldnames or ())
-            missing = [field for field in WORKFLOW_TIMING_FIELDS if field not in fieldnames]
+            missing = [
+                field for field in WORKFLOW_TIMING_FIELDS if field not in fieldnames
+            ]
             if missing:
                 raise BenchmarkError(
                     f"workflow timing CSV {path} is missing columns: "
@@ -253,7 +251,9 @@ def read_workflow_timing(
                 )
             rows = list(reader)
     except OSError as error:
-        raise BenchmarkError(f"could not read workflow timing CSV {path}: {error}") from error
+        raise BenchmarkError(
+            f"could not read workflow timing CSV {path}: {error}"
+        ) from error
 
     if len(rows) != 1:
         raise BenchmarkError(
@@ -370,8 +370,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args.workflow_args = tuple(args.workflow_args)
 
     if any(
-        value == "--timing-output-dir"
-        or value.startswith("--timing-output-dir=")
+        value == "--timing-output-dir" or value.startswith("--timing-output-dir=")
         for value in args.workflow_args
     ):
         parser.error(
@@ -503,14 +502,10 @@ def run_workflow(
         global_shape=global_shape,
         repetition=repetition,
         time_steps=None if timing is None else timing.time_steps,
-        global_grid_setup_s=(
-            None if timing is None else timing.global_grid_setup_s
-        ),
+        global_grid_setup_s=(None if timing is None else timing.global_grid_setup_s),
         local_grid_setup_s=None if timing is None else timing.local_grid_setup_s,
         model_loop_s=None if timing is None else timing.model_loop_s,
-        total_workflow_run_s=(
-            None if timing is None else timing.total_workflow_run_s
-        ),
+        total_workflow_run_s=(None if timing is None else timing.total_workflow_run_s),
         command_runtime_s=command_runtime_s,
         timing_csv_path=None if timing is None else timing.csv_path,
         status=status,
@@ -772,8 +767,7 @@ def run_benchmark(
 
             if result.status == "success":
                 print(
-                    f"Completed; model loop {float(result.model_loop_s):.2f} "
-                    "seconds.",
+                    f"Completed; model loop {float(result.model_loop_s):.2f} seconds.",
                     flush=True,
                 )
             else:

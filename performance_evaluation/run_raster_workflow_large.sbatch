@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=1G
+#SBATCH --mem=64G
 #SBATCH --time=2:00:00
 #SBATCH --output=raster-workflow-large-%j.out
 #SBATCH --error=raster-workflow-large-%j.err

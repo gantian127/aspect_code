@@ -4,19 +4,12 @@ import argparse
 import os
 
 import numpy as np
-from landlab.components import FlowAccumulator
-from landlab.components import LinearDiffuser
-from landlab.components import StreamPowerEroder
+from landlab.components import FlowAccumulator, LinearDiffuser, StreamPowerEroder
 from landlab.grid.nodestatus import NodeStatus
-from numpy.typing import ArrayLike
-from numpy.typing import NDArray
-
 from landlab_parallel.grid import create_landlab_grid
-from landlab_parallel.io import pvtu_dump
-from landlab_parallel.io import vtu_dump
-from landlab_parallel.tiler import D4Tiler
-from landlab_parallel.tiler import OddRTiler
-from landlab_parallel.tiler import Tile
+from landlab_parallel.io import pvtu_dump, vtu_dump
+from landlab_parallel.tiler import D4Tiler, OddRTiler, Tile
+from numpy.typing import ArrayLike, NDArray
 
 
 def run(shape, mode="odd-r", seed=None):

@@ -159,14 +159,10 @@ class RunResult:
             "global_shape": format_grid_shape(self.global_shape),
             "time_steps": "" if self.time_steps is None else self.time_steps,
             "repetition": self.repetition,
-            "global_grid_setup_s": format_optional_seconds(
-                self.global_grid_setup_s
-            ),
+            "global_grid_setup_s": format_optional_seconds(self.global_grid_setup_s),
             "local_grid_setup_s": format_optional_seconds(self.local_grid_setup_s),
             "model_loop_s": format_optional_seconds(self.model_loop_s),
-            "total_workflow_run_s": format_optional_seconds(
-                self.total_workflow_run_s
-            ),
+            "total_workflow_run_s": format_optional_seconds(self.total_workflow_run_s),
             "command_runtime_s": f"{self.command_runtime_s:.9f}",
             "status": self.status,
             "excluded": str(self.excluded).lower(),
@@ -455,12 +451,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         for value in args.workflow_args
     ):
         parser.error(
-            "do not pass --grid-shape through --workflow-args; "
-            "the benchmark manages it"
+            "do not pass --grid-shape through --workflow-args; the benchmark manages it"
         )
     if any(
-        value == "--timing-output-dir"
-        or value.startswith("--timing-output-dir=")
+        value == "--timing-output-dir" or value.startswith("--timing-output-dir=")
         for value in args.workflow_args
     ):
         parser.error(
@@ -612,14 +606,10 @@ def run_workflow(
         global_shape=case.global_shape,
         repetition=repetition,
         time_steps=None if timing is None else timing.time_steps,
-        global_grid_setup_s=(
-            None if timing is None else timing.global_grid_setup_s
-        ),
+        global_grid_setup_s=(None if timing is None else timing.global_grid_setup_s),
         local_grid_setup_s=None if timing is None else timing.local_grid_setup_s,
         model_loop_s=None if timing is None else timing.model_loop_s,
-        total_workflow_run_s=(
-            None if timing is None else timing.total_workflow_run_s
-        ),
+        total_workflow_run_s=(None if timing is None else timing.total_workflow_run_s),
         command_runtime_s=command_runtime_s,
         timing_csv_path=None if timing is None else timing.csv_path,
         status=status,
@@ -733,9 +723,7 @@ def summarize_results(
     if None in time_steps:
         raise BenchmarkError("successful run is missing time_steps")
     if len(time_steps) != 1:
-        raise BenchmarkError(
-            "weak-scaling runs must use one fixed time-step count"
-        )
+        raise BenchmarkError("weak-scaling runs must use one fixed time-step count")
     if any(
         result.model_loop_s is None
         for values in successful.values()
@@ -794,9 +782,7 @@ def write_summary_csv(
                     "average_model_loop_s": (
                         f"{float(row['average_model_loop_s']):.9f}"
                     ),
-                    "std_model_loop_s": (
-                        f"{float(row['std_model_loop_s']):.9f}"
-                    ),
+                    "std_model_loop_s": f"{float(row['std_model_loop_s']):.9f}",
                     "weak_scaling_efficiency": (
                         f"{float(row['weak_scaling_efficiency']):.9f}"
                     ),
@@ -887,8 +873,7 @@ def run_benchmark(
                 case,
                 repetition,
                 mpi_launcher,
-                workflow_timings_dir
-                / f"ranks_{case.ranks}_repeat_{repetition}",
+                workflow_timings_dir / f"ranks_{case.ranks}_repeat_{repetition}",
                 args.workflow_args,
             )
             results.append(result)
@@ -898,8 +883,7 @@ def run_benchmark(
 
             if result.status == "success":
                 print(
-                    f"Completed; model loop {float(result.model_loop_s):.2f} "
-                    "seconds.",
+                    f"Completed; model loop {float(result.model_loop_s):.2f} seconds.",
                     flush=True,
                 )
             else:

@@ -5,33 +5,25 @@ mpiexec -n 4 python raster_lem_example.py --grid-shape 300,300 --mode d4 --seed 
 mpiexec -n 4 python raster_lem_example.py --grid-shape 300,300 --mode odd-r --seed 1
 """
 
-import time
-
-script_started = time.perf_counter()
-
 import argparse
 import csv
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from landlab.components import FlowAccumulator
-from landlab.components import LinearDiffuser
-from landlab.components import StreamPowerEroder
+from landlab.components import FlowAccumulator, LinearDiffuser, StreamPowerEroder
 from landlab.grid.nodestatus import NodeStatus
-from numpy.typing import ArrayLike
-from numpy.typing import NDArray
-
 from landlab_parallel.grid import create_landlab_grid
-from landlab_parallel.io import pvtu_dump
-from landlab_parallel.io import vtu_dump
-from landlab_parallel.tiler import D4Tiler
-from landlab_parallel.tiler import OddRTiler
-from landlab_parallel.tiler import Tile
+from landlab_parallel.io import pvtu_dump, vtu_dump
+from landlab_parallel.tiler import D4Tiler, OddRTiler, Tile
+from numpy.typing import ArrayLike, NDArray
+
+script_started = time.perf_counter()
 
 debug_plot = False
-write_result_files = False
+write_result_files = True
 timing_output_dir = Path(__file__).resolve().parent / "raster_timing_results"
 
 TIMING_FIELDS = (
@@ -209,12 +201,8 @@ def run(shape, mode="odd-r", seed=None):
     comm.Barrier()
     script_time = time.perf_counter() - script_started
     max_script_time = comm.reduce(script_time, op=MPI.MAX, root=0)
-    max_global_grid_setup_time = comm.reduce(
-        global_grid_setup_time, op=MPI.MAX, root=0
-    )
-    max_local_grid_setup_time = comm.reduce(
-        local_grid_setup_time, op=MPI.MAX, root=0
-    )
+    max_global_grid_setup_time = comm.reduce(global_grid_setup_time, op=MPI.MAX, root=0)
+    max_local_grid_setup_time = comm.reduce(local_grid_setup_time, op=MPI.MAX, root=0)
     max_model_loop_time = comm.reduce(model_loop_time, op=MPI.MAX, root=0)
 
     if RANK == 0:

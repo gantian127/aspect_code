@@ -7,13 +7,10 @@ with adjustments to track the time spent on different sections and disable outpu
 mpiexec -n 4 python voronoi_lem_workflow.py --grid-shape 300,300
 """
 
-import time
-
-script_started = time.perf_counter()
-
 import argparse
 import csv
 import os
+import time
 import warnings
 from collections import defaultdict
 from datetime import datetime
@@ -29,6 +26,8 @@ from landlab.plot.graph import plot_graph
 from landlab_parallel.io import pvtu_dump, vtu_dump
 from mpi4py import MPI
 from plot_utils import create_pvd
+
+script_started = time.perf_counter()
 
 warnings.simplefilter("always")
 
@@ -482,9 +481,7 @@ for time_step in time_steps:
 
     # step7: make a VTU file for each rank at each time step
     if write_result_files:
-        with open(
-            os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w"
-        ) as fp:
+        with open(os.path.join(output_pvtu, f"rank{rank}_{time_step}.vtu"), "w") as fp:
             fp.write(vtu_dump(local_vmg))
 
     # testing code!! make plots for each rank at each time as png file for debugging
@@ -576,9 +573,7 @@ if rank == 0:
         pvtu_files = []
         for time_step in time_steps:
             # write pvtu file for each time step
-            with open(
-                os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w"
-            ) as fp:
+            with open(os.path.join(output_pvtu, f"global_{time_step}.pvtu"), "w") as fp:
                 fp.write(
                     pvtu_dump(
                         local_vmg,
@@ -602,14 +597,10 @@ if rank == 0:
 # creation and Python/MPI process shutdown necessarily occur afterward.
 comm.Barrier()
 total_workflow_run_time = time.perf_counter() - script_started
-max_global_grid_setup_time = comm.reduce(
-    global_grid_setup_time, op=MPI.MAX, root=0
-)
+max_global_grid_setup_time = comm.reduce(global_grid_setup_time, op=MPI.MAX, root=0)
 max_local_grid_setup_time = comm.reduce(local_grid_setup_time, op=MPI.MAX, root=0)
 max_model_loop_time = comm.reduce(model_loop_time, op=MPI.MAX, root=0)
-max_total_workflow_run_time = comm.reduce(
-    total_workflow_run_time, op=MPI.MAX, root=0
-)
+max_total_workflow_run_time = comm.reduce(total_workflow_run_time, op=MPI.MAX, root=0)
 
 if rank == 0:
     print("\nWorkflow timing summary (maximum across MPI ranks)")

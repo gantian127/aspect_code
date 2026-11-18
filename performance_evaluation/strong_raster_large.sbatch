@@ -6,8 +6,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=64
 #SBATCH --cpus-per-task=1
-#SBATCH --time=06:00:00
-#SBATCH --mem-per-cpu=1G
+#SBATCH --time=10:00:00
+#SBATCH --mem=64G
 #SBATCH --output=strong-raster-%j.out
 #SBATCH --error=strong-raster-%j.err
 
