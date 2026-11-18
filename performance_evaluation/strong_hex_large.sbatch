@@ -7,7 +7,7 @@
 #SBATCH --ntasks=64
 #SBATCH --cpus-per-task=1
 #SBATCH --time=06:00:00
-#SBATCH --mem=32G
+#SBATCH --mem-per-cpu=1G
 #SBATCH --output=strong-hex-%j.out
 #SBATCH --error=strong-hex-%j.err
 
