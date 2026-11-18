@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
+#SBATCH --mem-per-cpu=2G
 #SBATCH --time=3:00:00
 #SBATCH --output=voronoi-workflow-large-%j.out
 #SBATCH --error=voronoi-workflow-large-%j.err
